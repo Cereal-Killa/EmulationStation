@@ -14,15 +14,25 @@ SliderComponent::SliderComponent(Window* window, float min, float max, float inc
 	// some sane default value
 	mValue = (max + min) / 2;
 
+	auto menuTheme = ThemeData::getMenuTheme();
+	mColor = menuTheme->Text.color;
+
 	mKnob.setOrigin(0.5f, 0.5f);
-	mKnob.setImage(":/slider_knob.svg");
-	
-	setSize(Renderer::getScreenWidth() * 0.15f, Font::get(FONT_SIZE_MEDIUM)->getLetterHeight());
+	mKnob.setImage(ThemeData::getMenuTheme()->Icons.knob); // ":/slider_knob.svg");
+	mKnob.setColorShift(mColor);
+
+	setSize(Renderer::getScreenWidth() * 0.15f, menuTheme->Text.font->getLetterHeight());
+}
+
+void SliderComponent::setColor(unsigned int color) {
+	mColor = color;
+	mKnob.setColorShift(mColor);
+	onValueChanged();
 }
 
 bool SliderComponent::input(InputConfig* config, Input input)
 {
-	if(config->isMappedTo("left", input))
+	if(config->isMappedLike("left", input))
 	{
 		if(input.value)
 			setValue(mValue - mSingleIncrement);
@@ -31,7 +41,7 @@ bool SliderComponent::input(InputConfig* config, Input input)
 		mMoveAccumulator = -MOVE_REPEAT_DELAY;
 		return true;
 	}
-	if(config->isMappedTo("right", input))
+	if(config->isMappedLike("right", input))
 	{
 		if(input.value)
 			setValue(mValue + mSingleIncrement);
@@ -73,7 +83,7 @@ void SliderComponent::render(const Transform4x4f& parentTrans)
 
 	//render line
 	const float lineWidth = 2;
-	Renderer::drawRect(mKnob.getSize().x() / 2, mSize.y() / 2 - lineWidth / 2, width, lineWidth, 0x777777FF);
+	Renderer::drawRect(mKnob.getSize().x() / 2, mSize.y() / 2 - lineWidth / 2, width, lineWidth, mColor);
 
 	//render knob
 	mKnob.render(trans);
@@ -108,7 +118,7 @@ void SliderComponent::onSizeChanged()
 void SliderComponent::onValueChanged()
 {
 	// update suffix textcache
-	if(mFont)
+	if (mFont)
 	{
 		std::stringstream ss;
 		ss << std::fixed;
@@ -126,7 +136,7 @@ void SliderComponent::onValueChanged()
 		const std::string max = ss.str();
 
 		Vector2f textSize = mFont->sizeText(max);
-		mValueCache = std::shared_ptr<TextCache>(mFont->buildTextCache(val, mSize.x() - textSize.x(), (mSize.y() - textSize.y()) / 2, 0x777777FF));
+		mValueCache = std::shared_ptr<TextCache>(mFont->buildTextCache(val, mSize.x() - textSize.x(), (mSize.y() - textSize.y()) / 2, mColor));
 		mValueCache->metrics.size[0] = textSize.x(); // fudge the width
 	}
 
@@ -139,6 +149,6 @@ void SliderComponent::onValueChanged()
 std::vector<HelpPrompt> SliderComponent::getHelpPrompts()
 {
 	std::vector<HelpPrompt> prompts;
-	prompts.push_back(HelpPrompt("left/right", "change"));
+	prompts.push_back(HelpPrompt("left/right", _T("CHANGE")));
 	return prompts;
 }

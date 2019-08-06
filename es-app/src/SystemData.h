@@ -8,9 +8,23 @@
 #include <string>
 #include <vector>
 
+#include <pugixml/src/pugixml.hpp>
+#include "math/Vector2f.h"
+#include <unordered_map>
+
+#include "FileFilterIndex.h"
+
 class FileData;
-class FileFilterIndex;
+class FolderData;
 class ThemeData;
+class Window;
+
+struct EmulatorData
+{
+	std::string mName;
+	std::string mCommandLine;
+	std::vector<std::string> mCores;
+};
 
 struct SystemEnvironmentData
 {
@@ -18,6 +32,54 @@ struct SystemEnvironmentData
 	std::vector<std::string> mSearchExtensions;
 	std::string mLaunchCommand;
 	std::vector<PlatformIds::PlatformId> mPlatformIds;
+	std::vector<EmulatorData> mEmulators;
+
+	bool isValidExtension(const std::string extension)
+	{
+		return std::find(mSearchExtensions.cbegin(), mSearchExtensions.cend(), extension) != mSearchExtensions.cend();
+	}
+
+	std::vector<std::string> getCores(std::string emulatorName) 
+	{
+		std::vector<std::string> list;
+
+		for (auto& emulator : mEmulators)
+			if (emulatorName == emulator.mName)
+				return emulator.mCores;
+
+		return list;
+	}
+
+	std::string getDefaultEmulator()
+	{
+		for (auto& emulator : mEmulators)
+			return emulator.mName;
+
+		return "";
+	}
+
+	std::string getDefaultCore(std::string emulatorName)
+	{
+		for (auto& emulator : mEmulators)
+		{
+			if (emulatorName == emulator.mName)
+			{
+				for (auto core : emulator.mCores)
+					return core;
+			}
+		}
+
+		return "";
+	}
+
+	std::string getEmulatorCommandLine(std::string emulatorName)
+	{
+		for (auto& emulator : mEmulators)
+			if (emulatorName == emulator.mName)
+				return emulator.mCommandLine;
+
+		return "";
+	}
 };
 
 class SystemData
@@ -26,7 +88,7 @@ public:
 	SystemData(const std::string& name, const std::string& fullName, SystemEnvironmentData* envData, const std::string& themeFolder, bool CollectionSystem = false);
 	~SystemData();
 
-	inline FileData* getRootFolder() const { return mRootFolder; };
+	inline FolderData* getRootFolder() const { return mRootFolder; };
 	inline const std::string& getName() const { return mName; }
 	inline const std::string& getFullName() const { return mFullName; }
 	inline const std::string& getStartPath() const { return mEnvData->mStartPath; }
@@ -38,6 +100,11 @@ public:
 
 	inline const std::shared_ptr<ThemeData>& getTheme() const { return mTheme; }
 
+	std::string getSystemViewMode() const { if (mViewMode == "automatic") return ""; else return mViewMode; };
+	bool setSystemViewMode(std::string newViewMode, Vector2f gridSizeOverride = Vector2f(0,0), bool setChanged = true);
+
+	Vector2f getGridSizeOverride();
+
 	std::string getGamelistPath(bool forWrite) const;
 	bool hasGamelist() const;
 	std::string getThemePath() const;
@@ -46,7 +113,7 @@ public:
 	unsigned int getDisplayedGameCount() const;
 
 	static void deleteSystems();
-	static bool loadConfig(); //Load the system config file at getConfigPath(). Returns true if no errors were encountered. An example will be written if the file doesn't exist.
+	static bool loadConfig(Window* window); //Load the system config file at getConfigPath(). Returns true if no errors were encountered. An example will be written if the file doesn't exist.
 	static void writeExampleConfig(const std::string& path);
 	static std::string getConfigPath(bool forWrite); // if forWrite, will only return ~/.emulationstation/es_systems.cfg, never /etc/emulationstation/es_systems.cfg
 
@@ -67,9 +134,35 @@ public:
 	// Load or re-load theme.
 	void loadTheme();
 
-	FileFilterIndex* getIndex() { return mFilterIndex; };
+	FileFilterIndex* getIndex(bool createIndex = false);
+
+	void removeFromIndex(FileData* game) {
+		if (mFilterIndex != nullptr) mFilterIndex->removeFromIndex(game);
+	};
+
+	void addToIndex(FileData* game) {
+		if (mFilterIndex != nullptr) mFilterIndex->addToIndex(game);
+	};
+
+	void resetFilters() {
+		if (mFilterIndex != nullptr) mFilterIndex->resetFilters();
+	};
+
+	void resetIndex() {
+		if (mFilterIndex != nullptr) mFilterIndex->resetIndex();
+	};
+	
+
+	void setUIModeFilters() {
+		if (mFilterIndex != nullptr) mFilterIndex->setUIModeFilters();
+	}
+
+	unsigned int getSortId() const { return mSortId; };
+	void setSortId(const unsigned int sortId = 0);
 
 private:
+	static SystemData* loadSystem(pugi::xml_node system);
+
 	bool mIsCollectionSystem;
 	bool mIsGameSystem;
 	std::string mName;
@@ -78,13 +171,19 @@ private:
 	std::string mThemeFolder;
 	std::shared_ptr<ThemeData> mTheme;
 
-	void populateFolder(FileData* folder);
-	void indexAllGameFilters(const FileData* folder);
+	std::string mViewMode;
+	Vector2f    mGridSizeOverride;
+	bool mViewModeChanged;
+
+	unsigned int mSortId;
+
+	void populateFolder(FolderData* folder, std::unordered_map<std::string, FileData*>& fileMap);
+	void indexAllGameFilters(const FolderData* folder);
 	void setIsGameSystemStatus();
 
 	FileFilterIndex* mFilterIndex;
 
-	FileData* mRootFolder;
+	FolderData* mRootFolder;
 };
 
 #endif // ES_APP_SYSTEM_DATA_H

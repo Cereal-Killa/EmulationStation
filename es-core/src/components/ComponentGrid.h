@@ -29,8 +29,10 @@ namespace GridFlags
 class ComponentGrid : public GuiComponent
 {
 public:
-	ComponentGrid(Window* window, const Vector2i& gridDimensions);
+	ComponentGrid(Window* window, const Vector2i& gridDimensions/*, unsigned int separatorColor = 0xC6C7C6FF*/);
 	virtual ~ComponentGrid();
+
+	void setSeparatorColor(unsigned int separatorColor) { mSeparatorColor = separatorColor; updateSeparators(); }
 
 	bool removeEntry(const std::shared_ptr<GuiComponent>& comp);
 
@@ -69,6 +71,8 @@ public:
 
 	virtual std::vector<HelpPrompt> getHelpPrompts() override;
 
+	inline void setUnhandledInputCallback(const std::function<bool(InputConfig* config, Input input)>& func) { mUnhandledInputCallback = func; }
+
 private:
 	class GridEntry
 	{
@@ -105,6 +109,7 @@ private:
 
 	std::vector<Vert> mLines;
 	std::vector<unsigned int> mLineColors;
+	unsigned int mSeparatorColor;
 
 	// Update position & size
 	void updateCellComponent(const GridEntry& cell);
@@ -119,6 +124,8 @@ private:
 
 	void onCursorMoved(Vector2i from, Vector2i to);
 	Vector2i mCursor;
+
+	std::function<bool(InputConfig* config, Input input)> mUnhandledInputCallback;
 };
 
 #endif // ES_CORE_COMPONENTS_COMPONENT_GRID_H

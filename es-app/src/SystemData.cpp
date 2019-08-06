@@ -10,54 +10,97 @@
 #include "Settings.h"
 #include "ThemeData.h"
 #include "views/UIModeController.h"
-#include <pugixml/src/pugixml.hpp>
 #include <fstream>
-#ifdef WIN32
-#include <Windows.h>
-#endif
+#include "utils/StringUtil.h"
+#include "utils/ThreadPool.h"
+#include "GuiComponent.h"
+#include "Window.h"
+
+using namespace Utils;
 
 std::vector<SystemData*> SystemData::sSystemVector;
 
 SystemData::SystemData(const std::string& name, const std::string& fullName, SystemEnvironmentData* envData, const std::string& themeFolder, bool CollectionSystem) :
 	mName(name), mFullName(fullName), mEnvData(envData), mThemeFolder(themeFolder), mIsCollectionSystem(CollectionSystem), mIsGameSystem(true)
 {
-	mFilterIndex = new FileFilterIndex();
+	mSortId = 0;
+	mGridSizeOverride = Vector2f(0, 0);
+	mViewModeChanged = false;
+	mFilterIndex = nullptr;// new FileFilterIndex();
 
 	// if it's an actual system, initialize it, if not, just create the data structure
-	if(!CollectionSystem)
+	if (!CollectionSystem)
 	{
-		mRootFolder = new FileData(FOLDER, mEnvData->mStartPath, mEnvData, this);
+		mRootFolder = new FolderData(mEnvData->mStartPath, this);
 		mRootFolder->metadata.set("name", mFullName);
 
-		if(!Settings::getInstance()->getBool("ParseGamelistOnly"))
-			populateFolder(mRootFolder);
+		std::unordered_map<std::string, FileData*> fileMap;
+		
+		if (!Settings::getInstance()->getBool("ParseGamelistOnly"))
+		{			
+			populateFolder(mRootFolder, fileMap);
+			if (mRootFolder->getChildren().size() == 0)
+				return;
+		}
 
-		if(!Settings::getInstance()->getBool("IgnoreGamelist"))
-			parseGamelist(this);
+		if (!Settings::getInstance()->getBool("IgnoreGamelist"))
+			parseGamelist(this, fileMap);
+			
+		refactorGameFolders(this);
 
+		//StopWatch ws("sort " + mName);
 		mRootFolder->sort(FileSorts::SortTypes.at(0));
 
-		indexAllGameFilters(mRootFolder);
+		//indexAllGameFilters(mRootFolder);
 	}
 	else
 	{
 		// virtual systems are updated afterwards, we're just creating the data structure
-		mRootFolder = new FileData(FOLDER, "" + name, mEnvData, this);
+		mRootFolder = new FolderData("" + name, this);
 	}
+	
+	auto defaultView = Settings::getInstance()->getString(getName() + ".defaultView");
+	auto gridSizeOverride = Vector2f::parseString(Settings::getInstance()->getString(getName() + ".gridSize"));
+	setSystemViewMode(defaultView, gridSizeOverride, false);
+
+	mSortId = Settings::getInstance()->getInt(getName() + ".sort"),
+
 	setIsGameSystemStatus();
 	loadTheme();
 }
 
-SystemData::~SystemData()
+bool SystemData::setSystemViewMode(std::string newViewMode, Vector2f gridSizeOverride, bool setChanged)
 {
-	//save changed game data back to xml
-	if(!Settings::getInstance()->getBool("IgnoreGamelist") && Settings::getInstance()->getBool("SaveGamelistsOnExit") && !mIsCollectionSystem)
+	if (newViewMode == "automatic")
+		newViewMode = "";
+
+	if (mViewMode == newViewMode && gridSizeOverride == mGridSizeOverride)
+		return false;
+
+	mGridSizeOverride = gridSizeOverride;
+	mViewMode = newViewMode;
+	mViewModeChanged = setChanged;
+
+	if (setChanged)
 	{
-		updateGamelist(this);
+		Settings::getInstance()->setString(getName() + ".defaultView", mViewMode);
+		Settings::getInstance()->setString(getName() + ".gridSize", Utils::String::replace(Utils::String::replace(mGridSizeOverride.toString(), ".000000", ""), "0 0", ""));
 	}
 
+	return true;
+}
+
+Vector2f SystemData::getGridSizeOverride()
+{
+	return mGridSizeOverride;
+}
+
+SystemData::~SystemData()
+{
 	delete mRootFolder;
-	delete mFilterIndex;
+
+	if (mFilterIndex != nullptr)
+		delete mFilterIndex;
 }
 
 void SystemData::setIsGameSystemStatus()
@@ -68,7 +111,7 @@ void SystemData::setIsGameSystemStatus()
 	mIsGameSystem = (mName != "retropie");
 }
 
-void SystemData::populateFolder(FileData* folder)
+void SystemData::populateFolder(FolderData* folder, std::unordered_map<std::string, FileData*>& fileMap)
 {
 	const std::string& folderPath = folder->getPath();
 	if(!Utils::FileSystem::isDirectory(folderPath))
@@ -87,51 +130,84 @@ void SystemData::populateFolder(FileData* folder)
 			return;
 		}
 	}
-
-	std::string filePath;
+	
+//	std::string filePath;
 	std::string extension;
 	bool isGame;
 	bool showHidden = Settings::getInstance()->getBool("ShowHiddenFiles");
-	Utils::FileSystem::stringList dirContent = Utils::FileSystem::getDirContent(folderPath);
-	for(Utils::FileSystem::stringList::const_iterator it = dirContent.cbegin(); it != dirContent.cend(); ++it)
+	
+	Utils::FileSystem::fileList dirContent = Utils::FileSystem::getDirInfo(folderPath);
+
+	for(Utils::FileSystem::fileList::const_iterator it = dirContent.cbegin(); it != dirContent.cend(); ++it)
 	{
-		filePath = *it;
+		auto fileInfo = *it;
+		//filePath = *it;
+
+		// skip hidden files and folders
+		if(!showHidden && fileInfo.hidden)
+			continue;
 
 		//this is a little complicated because we allow a list of extensions to be defined (delimited with a space)
 		//we first get the extension of the file itself:
-		extension = Utils::FileSystem::getExtension(filePath);
+		extension = Utils::String::toLower(Utils::FileSystem::getExtension(fileInfo.path));		
 
 		//fyi, folders *can* also match the extension and be added as games - this is mostly just to support higan
 		//see issue #75: https://github.com/Aloshi/EmulationStation/issues/75
-
+		
 		isGame = false;
-		if(std::find(mEnvData->mSearchExtensions.cbegin(), mEnvData->mSearchExtensions.cend(), extension) != mEnvData->mSearchExtensions.cend())
+		if (mEnvData->isValidExtension(extension)) //std::find(mEnvData->mSearchExtensions.cbegin(), mEnvData->mSearchExtensions.cend(), extension) != mEnvData->mSearchExtensions.cend())
 		{
-			// skip hidden files
-			if(!showHidden && Utils::FileSystem::isHidden(filePath))
+			if (fileMap.find(fileInfo.path) == fileMap.end())
+			{
+				FileData* newGame = new FileData(GAME, fileInfo.path, this);
+
+				// preventing new arcade assets to be added
+				if (extension != ".zip" || !newGame->isArcadeAsset())
+				{
+					folder->addChild(newGame);
+					fileMap[fileInfo.path] = newGame;
+					isGame = true;
+				}
+			}
+		}
+		
+		//add directories that also do not match an extension as folders
+		if (!isGame && fileInfo.directory)
+		{
+			if (fileInfo.path.rfind("downloaded_") != std::string::npos || fileInfo.path.rfind("media") != std::string::npos)
 				continue;
 
-			FileData* newGame = new FileData(GAME, filePath, mEnvData, this);
-			folder->addChild(newGame);
-			isGame = true;
-		}
+			FolderData* newFolder = new FolderData(fileInfo.path, this);
+			populateFolder(newFolder, fileMap);
 
-		//add directories that also do not match an extension as folders
-		if(!isGame && Utils::FileSystem::isDirectory(filePath))
-		{
-			FileData* newFolder = new FileData(FOLDER, filePath, mEnvData, this);
-			populateFolder(newFolder);
-
-			//ignore folders that do not contain games
-			if(newFolder->getChildrenByFilename().size() == 0)
+			if (newFolder->getChildren().size() == 0)
 				delete newFolder;
 			else
-				folder->addChild(newFolder);
+			{
+				const std::string& key = newFolder->getPath();
+				if (fileMap.find(key) == fileMap.end())
+				{
+					folder->addChild(newFolder);
+					fileMap[key] = newFolder;
+				}
+			}
 		}
 	}
 }
 
-void SystemData::indexAllGameFilters(const FileData* folder)
+FileFilterIndex* SystemData::getIndex(bool createIndex) 
+{ 
+	if (mFilterIndex == nullptr && createIndex)
+	{
+		mFilterIndex = new FileFilterIndex();
+		indexAllGameFilters(mRootFolder);
+		mFilterIndex->setUIModeFilters();
+	}
+
+	return mFilterIndex; 
+}
+
+void SystemData::indexAllGameFilters(const FolderData* folder)
 {
 	const std::vector<FileData*>& children = folder->getChildren();
 
@@ -140,7 +216,7 @@ void SystemData::indexAllGameFilters(const FileData* folder)
 		switch((*it)->getType())
 		{
 			case GAME:   { mFilterIndex->addToIndex(*it); } break;
-			case FOLDER: { indexAllGameFilters(*it);      } break;
+			case FOLDER: { indexAllGameFilters((FolderData*)*it); } break;
 		}
 	}
 }
@@ -162,8 +238,129 @@ std::vector<std::string> readList(const std::string& str, const char* delims = "
 	return ret;
 }
 
+SystemData* SystemData::loadSystem(pugi::xml_node system)
+{
+	std::vector<EmulatorData> emulatorList;
+
+	std::string name, fullname, path, cmd, themeFolder, defaultCore;
+
+	name = system.child("name").text().get();
+	fullname = system.child("fullname").text().get();
+	path = system.child("path").text().get();
+	defaultCore = system.child("defaultCore").text().get();
+
+	pugi::xml_node emulators = system.child("emulators");
+	if (emulators != NULL)
+	{
+		for (pugi::xml_node emulator : emulators.children())
+		{
+			EmulatorData emulatorData;
+			emulatorData.mName = emulator.attribute("name").value();
+			emulatorData.mCommandLine = emulator.attribute("command").value();
+
+			pugi::xml_node cores = emulator.child("cores");
+			if (cores != NULL)
+			{
+				for (pugi::xml_node core : cores.children())
+				{
+					const std::string& corename = core.text().get();
+
+					if (defaultCore.length() == 0)
+						defaultCore = corename;
+
+					emulatorData.mCores.push_back(corename);
+				}
+			}
+
+			emulatorList.push_back(emulatorData);
+		}
+	}
+	/*
+	if (window != NULL)
+		window->renderLoadingScreen(fullname, systemCount == 0 ? 0 : currentSystem / systemCount);
+
+	currentSystem++;
+	*/
+	// convert extensions list from a string into a vector of strings
+
+	std::vector<std::string> list = readList(system.child("extension").text().get());
+	std::vector<std::string> extensions;
+
+	for (auto extension = list.cbegin(); extension != list.cend(); extension++)
+	{
+		std::string xt = Utils::String::toLower(*extension);
+		if (std::find(extensions.begin(), extensions.end(), xt) == extensions.end())
+			extensions.push_back(xt);
+	}
+
+	cmd = system.child("command").text().get();
+
+	// platform id list
+	const char* platformList = system.child("platform").text().get();
+	std::vector<std::string> platformStrs = readList(platformList);
+	std::vector<PlatformIds::PlatformId> platformIds;
+	for (auto it = platformStrs.cbegin(); it != platformStrs.cend(); it++)
+	{
+		const char* str = it->c_str();
+		PlatformIds::PlatformId platformId = PlatformIds::getPlatformId(str);
+
+		if (platformId == PlatformIds::PLATFORM_IGNORE)
+		{
+			// when platform is ignore, do not allow other platforms
+			platformIds.clear();
+			platformIds.push_back(platformId);
+			break;
+		}
+
+		// if there appears to be an actual platform ID supplied but it didn't match the list, warn
+		if (str != NULL && str[0] != '\0' && platformId == PlatformIds::PLATFORM_UNKNOWN)
+			LOG(LogWarning) << "  Unknown platform for system \"" << name << "\" (platform \"" << str << "\" from list \"" << platformList << "\")";
+		else if (platformId != PlatformIds::PLATFORM_UNKNOWN)
+			platformIds.push_back(platformId);
+	}
+
+	// theme folder
+	themeFolder = system.child("theme").text().as_string(name.c_str());
+
+	//validate
+	if (name.empty() || path.empty() || extensions.empty() || cmd.empty())
+	{
+		LOG(LogError) << "System \"" << name << "\" is missing name, path, extension, or command!";
+		return nullptr;
+	}
+
+	//convert path to generic directory seperators
+	path = Utils::FileSystem::getGenericPath(path);
+
+	//expand home symbol if the startpath contains ~
+	if (path[0] == '~')
+	{
+		path.erase(0, 1);
+		path.insert(0, Utils::FileSystem::getHomePath());
+	}
+
+	//create the system runtime environment data
+	SystemEnvironmentData* envData = new SystemEnvironmentData;
+	envData->mStartPath = path;
+	envData->mSearchExtensions = extensions;
+	envData->mLaunchCommand = cmd;
+	envData->mPlatformIds = platformIds;
+	envData->mEmulators = emulatorList;
+
+	SystemData* newSys = new SystemData(name, fullname, envData, themeFolder);
+	if (newSys->getRootFolder()->getChildren().size() == 0)
+	{
+		LOG(LogWarning) << "System \"" << name << "\" has no games! Ignoring it.";
+		delete newSys;
+
+		return nullptr;
+	}
+
+	return newSys;
+}
+
 //creates systems from information located in a config file
-bool SystemData::loadConfig()
+bool SystemData::loadConfig(Window* window)
 {
 	deleteSystems();
 
@@ -197,80 +394,102 @@ bool SystemData::loadConfig()
 		return false;
 	}
 
-	for(pugi::xml_node system = systemList.child("system"); system; system = system.next_sibling("system"))
+	std::vector<std::string> systemsNames;
+	
+	int systemCount = 0;
+	for (pugi::xml_node system = systemList.child("system"); system; system = system.next_sibling("system"))
 	{
-		std::string name, fullname, path, cmd, themeFolder;
-
-		name = system.child("name").text().get();
-		fullname = system.child("fullname").text().get();
-		path = system.child("path").text().get();
-
-		// convert extensions list from a string into a vector of strings
-		std::vector<std::string> extensions = readList(system.child("extension").text().get());
-
-		cmd = system.child("command").text().get();
-
-		// platform id list
-		const char* platformList = system.child("platform").text().get();
-		std::vector<std::string> platformStrs = readList(platformList);
-		std::vector<PlatformIds::PlatformId> platformIds;
-		for(auto it = platformStrs.cbegin(); it != platformStrs.cend(); it++)
-		{
-			const char* str = it->c_str();
-			PlatformIds::PlatformId platformId = PlatformIds::getPlatformId(str);
-
-			if(platformId == PlatformIds::PLATFORM_IGNORE)
-			{
-				// when platform is ignore, do not allow other platforms
-				platformIds.clear();
-				platformIds.push_back(platformId);
-				break;
-			}
-
-			// if there appears to be an actual platform ID supplied but it didn't match the list, warn
-			if(str != NULL && str[0] != '\0' && platformId == PlatformIds::PLATFORM_UNKNOWN)
-				LOG(LogWarning) << "  Unknown platform for system \"" << name << "\" (platform \"" << str << "\" from list \"" << platformList << "\")";
-			else if(platformId != PlatformIds::PLATFORM_UNKNOWN)
-				platformIds.push_back(platformId);
-		}
-
-		// theme folder
-		themeFolder = system.child("theme").text().as_string(name.c_str());
-
-		//validate
-		if(name.empty() || path.empty() || extensions.empty() || cmd.empty())
-		{
-			LOG(LogError) << "System \"" << name << "\" is missing name, path, extension, or command!";
-			continue;
-		}
-
-		//convert path to generic directory seperators
-		path = Utils::FileSystem::getGenericPath(path);
-
-		//expand home symbol if the startpath contains ~
-		if(path[0] == '~')
-		{
-			path.erase(0, 1);
-			path.insert(0, Utils::FileSystem::getHomePath());
-		}
-
-		//create the system runtime environment data
-		SystemEnvironmentData* envData = new SystemEnvironmentData;
-		envData->mStartPath = path;
-		envData->mSearchExtensions = extensions;
-		envData->mLaunchCommand = cmd;
-		envData->mPlatformIds = platformIds;
-
-		SystemData* newSys = new SystemData(name, fullname, envData, themeFolder);
-		if(newSys->getRootFolder()->getChildrenByFilename().size() == 0)
-		{
-			LOG(LogWarning) << "System \"" << name << "\" has no games! Ignoring it.";
-			delete newSys;
-		}else{
-			sSystemVector.push_back(newSys);
-		}
+		systemsNames.push_back(system.child("fullname").text().get());
+		systemCount++;
 	}
-	CollectionSystemManager::get()->loadCollectionSystems();
+
+	int currentSystem = 0;
+
+	typedef SystemData* SystemDataPtr;
+
+	ThreadPool* pThreadPool = NULL;
+	SystemDataPtr* systems = NULL;
+	
+	if (std::thread::hardware_concurrency() > 2 && Settings::getInstance()->getBool("ThreadedLoading"))
+	{
+		pThreadPool = new ThreadPool();
+
+		systems = new SystemDataPtr[systemCount];
+		for (int i = 0; i < systemCount; i++)
+			systems[i] = nullptr;
+
+		pThreadPool->queueWorkItem([] { CollectionSystemManager::get()->loadCollectionSystems(true); });
+	}
+
+	int processedSystem = 0;
+	
+	for (pugi::xml_node system = systemList.child("system"); system; system = system.next_sibling("system"))
+	{		
+		if (pThreadPool != NULL)
+		{
+			pThreadPool->queueWorkItem([system, currentSystem, systems, &processedSystem]
+			{				
+				systems[currentSystem] = loadSystem(system);
+				processedSystem++;
+			});
+		}
+		else
+		{
+			std::string fullname = system.child("fullname").text().get();
+
+			if (window != NULL)
+				window->renderLoadingScreen(fullname, systemCount == 0 ? 0 : (float)currentSystem / (float)(systemCount + 1));
+
+			std::string nm = system.child("name").text().get();
+			StopWatch watch("SystemData " + nm);
+
+			SystemData* pSystem = loadSystem(system);
+			if (pSystem != nullptr)
+				sSystemVector.push_back(pSystem);
+		}
+
+		currentSystem++;
+	}
+
+	if (pThreadPool != NULL)
+	{
+		if (window != NULL)
+		{
+			pThreadPool->wait([window, &processedSystem, systemCount, &systemsNames]
+			{
+				int px = processedSystem - 1;
+				if (px >= 0 && px < systemsNames.size())
+					window->renderLoadingScreen(systemsNames.at(px), (float)px / (float)(systemCount + 1));
+			}, 10);
+		}
+		else
+			pThreadPool->wait();
+
+		for (int i = 0; i < systemCount; i++)
+		{
+			SystemData* pSystem = systems[i];
+			if (pSystem != nullptr)
+				sSystemVector.push_back(pSystem);
+		}
+		
+		delete[] systems;
+		delete pThreadPool;
+
+		if (window != NULL)
+			window->renderLoadingScreen(_T("Favorites"), systemCount == 0 ? 0 : currentSystem / systemCount);
+
+		CollectionSystemManager::get()->updateSystemsList();
+	}
+	else
+	{
+		if (window != NULL)
+			window->renderLoadingScreen(_T("Favorites"), systemCount == 0 ? 0 : currentSystem / systemCount);
+
+		CollectionSystemManager::get()->loadCollectionSystems();
+	}
+
+	if (SystemData::sSystemVector.size() > 0)
+		ThemeData::setDefaultTheme(SystemData::sSystemVector.at(0)->getTheme().get());
 
 	return true;
 }
@@ -323,10 +542,18 @@ void SystemData::writeExampleConfig(const std::string& path)
 
 void SystemData::deleteSystems()
 {
+	bool saveOnExit = !Settings::getInstance()->getBool("IgnoreGamelist") && Settings::getInstance()->getBool("SaveGamelistsOnExit");
+
 	for(unsigned int i = 0; i < sSystemVector.size(); i++)
 	{
-		delete sSystemVector.at(i);
+		SystemData* pData = sSystemVector.at(i);
+
+		if (saveOnExit && !pData->mIsCollectionSystem)
+			updateGamelist(pData);
+
+		delete pData;
 	}
+
 	sSystemVector.clear();
 }
 
@@ -376,16 +603,20 @@ SystemData* SystemData::getPrev() const
 
 std::string SystemData::getGamelistPath(bool forWrite) const
 {
-	std::string filePath;
+	std::string fileRomPath = mRootFolder->getPath() + "/gamelist.xml";
+	if(Utils::FileSystem::exists(fileRomPath))
+		return fileRomPath;
 
-	filePath = mRootFolder->getPath() + "/gamelist.xml";
-	if(Utils::FileSystem::exists(filePath))
-		return filePath;
+	std::string filePath = Utils::FileSystem::getHomePath() + "/.emulationstation/gamelists/" + mName + "/gamelist.xml";
 
-	filePath = Utils::FileSystem::getHomePath() + "/.emulationstation/gamelists/" + mName + "/gamelist.xml";
+	// Default to system rom folder
+	if (forWrite && !Utils::FileSystem::exists(filePath) && Utils::FileSystem::isDirectory(mRootFolder->getPath()))
+		return fileRomPath;
+
 	if(forWrite) // make sure the directory exists if we're going to write to it, or crashes will happen
 		Utils::FileSystem::createDirectory(Utils::FileSystem::getParent(filePath));
-	if(forWrite || Utils::FileSystem::exists(filePath))
+	
+	if (forWrite || Utils::FileSystem::exists(filePath))
 		return filePath;
 
 	return "/etc/emulationstation/gamelists/" + mName + "/gamelist.xml";
@@ -475,11 +706,12 @@ unsigned int SystemData::getDisplayedGameCount() const
 
 void SystemData::loadTheme()
 {
+	//StopWatch watch("SystemData::loadTheme " + getName());
+
 	mTheme = std::make_shared<ThemeData>();
 
 	std::string path = getThemePath();
-
-	if(!Utils::FileSystem::exists(path)) // no theme available for this platform
+	if (!Utils::FileSystem::exists(path)) // no theme available for this platform
 		return;
 
 	try
@@ -490,10 +722,17 @@ void SystemData::loadTheme()
 		sysData.insert(std::pair<std::string, std::string>("system.theme", getThemeFolder()));
 		sysData.insert(std::pair<std::string, std::string>("system.fullName", getFullName()));
 		
-		mTheme->loadFile(sysData, path);
-	} catch(ThemeException& e)
+		mTheme->loadFile(getThemeFolder(), sysData, path);
+	} 
+	catch(ThemeException& e)
 	{
 		LOG(LogError) << e.what();
 		mTheme = std::make_shared<ThemeData>(); // reset to empty
 	}
+}
+
+void SystemData::setSortId(const unsigned int sortId)
+{
+	mSortId = sortId;
+	Settings::getInstance()->setInt(getName() + ".sort", mSortId);
 }

@@ -7,6 +7,7 @@
 #include "utils/StringUtil.h"
 #include "Log.h"
 #include "Sound.h"
+#include "Settings.h"
 #include <memory>
 
 class TextCache;
@@ -73,6 +74,7 @@ public:
 	inline void setSelectorHeight(float selectorScale) { mSelectorHeight = selectorScale; }
 	inline void setSelectorOffsetY(float selectorOffsetY) { mSelectorOffsetY = selectorOffsetY; }
 	inline void setSelectorColor(unsigned int color) { mSelectorColor = color; }
+	inline void setSelectorGradientColor(unsigned int color) { mSelectorGradientColor = color; }
 	inline void setSelectedColor(unsigned int color) { mSelectedColor = color; }
 	inline void setColor(unsigned int id, unsigned int color) { mColors[id] = color; }
 	inline void setLineSpacing(float lineSpacing) { mLineSpacing = lineSpacing; }
@@ -97,6 +99,7 @@ private:
 	float mSelectorHeight;
 	float mSelectorOffsetY;
 	unsigned int mSelectorColor;
+	unsigned int mSelectorGradientColor;
 	unsigned int mSelectedColor;
 	std::string mScrollSound;
 	static const unsigned int COLOR_ID_COUNT = 2;
@@ -122,6 +125,7 @@ TextListComponent<T>::TextListComponent(Window* window) :
 	mSelectorHeight = mFont->getSize() * 1.5f;
 	mSelectorOffsetY = 0;
 	mSelectorColor = 0x000000FF;
+	mSelectorGradientColor = 0;
 	mSelectedColor = 0;
 	mColors[0] = 0x0000FFFF;
 	mColors[1] = 0x00FF00FF;
@@ -137,12 +141,24 @@ void TextListComponent<T>::render(const Transform4x4f& parentTrans)
 	if(size() == 0)
 		return;
 
+	Vector2f clipPos(trans.translation().x(), trans.translation().y());
+	if (!Renderer::isVisibleOnScreen(clipPos.x(), clipPos.y(), mSize.x(), mSize.y()))
+		return;
+
+	if (Settings::getInstance()->getBool("DebugGrid"))
+	{
+		Renderer::setMatrix(trans);
+		Renderer::drawRect(0.0f, 0.0f, mSize.x(), mSize.y(), 0xFF000033);
+		Renderer::setMatrix(parentTrans);
+	}
+
+
 	const float entrySize = Math::max(font->getHeight(1.0), (float)font->getSize()) * mLineSpacing;
 
 	int startEntry = 0;
 
 	//number of entries that can fit on the screen simultaniously
-	int screenCount = (int)(mSize.y() / entrySize + 0.5f);
+	int screenCount = Math::round(mSize.y() / entrySize); // (int)(mSize.y() / entrySize); //  + 0.5f -> avoid partial items
 	
 	if(size() >= screenCount)
 	{
@@ -167,7 +183,11 @@ void TextListComponent<T>::render(const Transform4x4f& parentTrans)
 			mSelectorImage.render(trans);
 		} else {
 			Renderer::setMatrix(trans);
-			Renderer::drawRect(0.f, (mCursor - startEntry)*entrySize + mSelectorOffsetY, mSize.x(), mSelectorHeight, mSelectorColor);
+
+			if (mSelectorGradientColor != 0)
+				Renderer::drawGradientRect(0.f, (mCursor - startEntry)*entrySize + mSelectorOffsetY, mSize.x(), mSelectorHeight, mSelectorColor, mSelectorGradientColor);
+			else
+				Renderer::drawRect(0.f, (mCursor - startEntry)*entrySize + mSelectorOffsetY, mSize.x(), mSelectorHeight, mSelectorColor);
 		}
 	}
 
@@ -200,7 +220,7 @@ void TextListComponent<T>::render(const Transform4x4f& parentTrans)
 			offset[0] = mHorizontalMargin;
 			break;
 		case ALIGN_CENTER:
-			offset[0] = (mSize.x() - entry.data.textCache->metrics.size.x()) / 2;
+			offset[0] = (int)((mSize.x() - entry.data.textCache->metrics.size.x()) / 2);
 			if(offset[0] < mHorizontalMargin)
 				offset[0] = mHorizontalMargin;
 			break;
@@ -251,13 +271,13 @@ bool TextListComponent<T>::input(InputConfig* config, Input input)
 	{
 		if(input.value != 0)
 		{
-			if(config->isMappedTo("down", input))
+			if(config->isMappedLike("down", input))
 			{
 				listInput(1);
 				return true;
 			}
 
-			if(config->isMappedTo("up", input))
+			if(config->isMappedLike("up", input))
 			{
 				listInput(-1);
 				return true;
@@ -274,7 +294,7 @@ bool TextListComponent<T>::input(InputConfig* config, Input input)
 				return true;
 			}
 		}else{
-			if(config->isMappedTo("down", input) || config->isMappedTo("up", input) || 
+			if(config->isMappedLike("down", input) || config->isMappedLike("up", input) || 
 				config->isMappedTo("pagedown", input) || config->isMappedTo("pageup", input))
 			{
 				stopScrolling();
@@ -370,6 +390,8 @@ void TextListComponent<T>::applyTheme(const std::shared_ptr<ThemeData>& theme, c
 			setColor(0, elem->get<unsigned int>("primaryColor"));
 		if(elem->has("secondaryColor"))
 			setColor(1, elem->get<unsigned int>("secondaryColor"));
+		if (elem->has("selectorColorEnd"))
+			setSelectorGradientColor(elem->get<unsigned int>("selectorColorEnd"));
 	}
 
 	setFont(Font::getFromTheme(elem, properties, mFont));

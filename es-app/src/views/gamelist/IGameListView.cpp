@@ -6,6 +6,11 @@
 #include "Sound.h"
 #include "Window.h"
 
+void IGameListView::setThemeName(std::string name)
+{
+	mCustomThemeName = name;
+}
+
 bool IGameListView::input(InputConfig* config, Input input)
 {
 	// select to open GuiGamelistOptions
@@ -49,6 +54,10 @@ void IGameListView::render(const Transform4x4f& parentTrans)
 
 	Vector2i pos((int)Math::round(trans.translation()[0]), (int)Math::round(trans.translation()[1]));
 	Vector2i size((int)Math::round(mSize.x() * scaleX), (int)Math::round(mSize.y() * scaleY));
+
+	Vector2f clipPos(trans.translation().x(), trans.translation().y());
+	if (!Renderer::isVisibleOnScreen(clipPos.x(), clipPos.y(), size.x(), size.y()))
+		return;
 
 	Renderer::pushClipRect(pos, size);
 	renderChildren(trans);

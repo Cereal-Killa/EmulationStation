@@ -15,6 +15,7 @@ namespace Renderer {
 	};
 
 	std::stack<ClipRect> clipStack;
+	std::stack<ClipRect> nativeClipStack;
 
 	void setColor4bArray(GLubyte* array, unsigned int color)
 	{
@@ -62,7 +63,7 @@ namespace Renderer {
 		}
 
 		//make sure the box fits within clipStack.top(), and clip further accordingly
-		if(clipStack.size())
+		if (clipStack.size())
 		{
 			const ClipRect& top = clipStack.top();
 			if(top.x > box.x)
@@ -81,6 +82,7 @@ namespace Renderer {
 			box.h = 0;
 
 		clipStack.push(box);
+		nativeClipStack.push(ClipRect(pos.x(), pos.y(), dim.x(), dim.y()));
 
 		glScissor(box.x, box.y, box.w, box.h);
 		glEnable(GL_SCISSOR_TEST);
@@ -95,13 +97,59 @@ namespace Renderer {
 		}
 
 		clipStack.pop();
+		nativeClipStack.pop();
+
 		if(clipStack.empty())
 		{
 			glDisable(GL_SCISSOR_TEST);
-		}else{
+		}
+		else
+		{
 			const ClipRect& top = clipStack.top();
 			glScissor(top.x, top.y, top.w, top.h);
 		}
+	}
+
+	bool isClippingEnabled() { return !clipStack.empty(); }
+
+	bool valueInRange(int value, int min, int max)
+	{
+		return (value >= min) && (value <= max);
+	}
+	
+	bool rectOverlap(ClipRect A, ClipRect B)
+	{
+		bool xOverlap = valueInRange(A.x, B.x, B.x + B.w) ||
+			valueInRange(B.x, A.x, A.x + A.w);
+
+		bool yOverlap = valueInRange(A.y, B.y, B.y + B.h) ||
+			valueInRange(B.y, A.y, A.y + A.h);
+
+		return xOverlap && yOverlap;
+	}
+
+	bool isVisibleOnScreen(float x, float y, float w, float h)
+	{		
+		ClipRect screen = ClipRect(0, 0, Renderer::getWindowWidth(), Renderer::getWindowHeight());
+		ClipRect box = ClipRect(x, y, w, h);
+		
+		if (w > 0 && x + w <= 0)
+			return false;
+
+		if (h > 0 && y + h <= 0)
+			return false;
+
+		if (x == screen.w || y == screen.h)
+			return false;
+			
+		if (!rectOverlap(box, screen))
+			return false;
+
+		if (clipStack.empty())
+			return true;
+		
+		screen = nativeClipStack.top();
+		return rectOverlap(screen, box);
 	}
 
 	void drawRect(float x, float y, float w, float h, unsigned int color, GLenum blend_sfactor, GLenum blend_dfactor)
@@ -109,8 +157,62 @@ namespace Renderer {
 		drawRect((int)Math::round(x), (int)Math::round(y), (int)Math::round(w), (int)Math::round(h), color, blend_sfactor, blend_dfactor);
 	}
 
+	#define MAKEQUAD(x) (((x) & 0xff000000) >> 24) / 255.0,  (((x) & 0x00ff0000) >> 16) / 255.0, (((x) & 0x0000ff00) >> 8) / 255.0, (((x) & 0x000000ff)) / 255.0
+
+	void drawGradientRect(int x, int y, int w, int h, unsigned int color, unsigned int colorBottom, bool horz, GLenum blend_sfactor, GLenum blend_dfactor)
+	{
+		glEnable(GL_BLEND);
+		glBlendFunc(blend_sfactor, blend_dfactor);
+		
+		glBegin(GL_QUADS);
+
+		glColor4f(MAKEQUAD(horz ? colorBottom : color));
+		glVertex2f(x, y);
+
+		glColor4f(MAKEQUAD(color));
+		glVertex2f(x + w, y);
+
+		glColor4f(MAKEQUAD(horz ? color : colorBottom));
+		glVertex2f(x + w, y + h);
+
+		glColor4f(MAKEQUAD(colorBottom));
+		glVertex2f(x, y + h);
+
+		glEnd();
+
+		glDisable(GL_BLEND);
+
+		return;
+	}
+
 	void drawRect(int x, int y, int w, int h, unsigned int color, GLenum blend_sfactor, GLenum blend_dfactor)
 	{
+		glEnable(GL_BLEND);
+		glBlendFunc(blend_sfactor, blend_dfactor);
+		glBegin(GL_QUADS);
+
+		GLfloat red = ((color & 0xff000000) >> 24) / 255.0;
+		GLfloat green = ((color & 0x00ff0000) >> 16) / 255.0;
+		GLfloat blue = ((color & 0x0000ff00) >> 8) / 255.0;
+		GLfloat alpha = ((color & 0x000000ff)) / 255.0;
+
+		glColor4f(red, green, blue, alpha);
+		glVertex2f(x, y);
+
+		glColor4f(red, green, blue, alpha);
+		glVertex2f(x+w, y);
+
+		glColor4f(red, green, blue, alpha);
+		glVertex2f(x+w, y+h);
+
+		glColor4f(red, green, blue, alpha);
+		glVertex2f(x, y+h);
+
+		glEnd();
+		glDisable(GL_BLEND);
+
+		return;
+
 #ifdef USE_OPENGL_ES
 		GLshort points[12];
 #else

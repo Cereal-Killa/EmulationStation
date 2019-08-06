@@ -72,31 +72,51 @@ Font::Font(int size, const std::string& path) : mSize(size), mPath(path)
 {
 	assert(mSize > 0);
 	
+	mLoaded = true;
 	mMaxGlyphHeight = 0;
 
-	if(!sLibrary)
+	if (!sLibrary)
 		initLibrary();
 
+	for (unsigned int i = 0; i < 255; i++)
+		mGlyphCacheArray[i] = NULL;
+
 	// always initialize ASCII characters
-	for(unsigned int i = 32; i < 128; i++)
+	for (unsigned int i = 32; i < 128; i++)
 		getGlyph(i);
 
+	// getGlyph(61446);
+	
 	clearFaceCache();
 }
 
 Font::~Font()
 {
-	unload(ResourceManager::getInstance());
+	for (auto it = mGlyphMap.cbegin(); it != mGlyphMap.cend(); it++)
+		delete it->second;
+
+	unload();
 }
 
-void Font::reload(std::shared_ptr<ResourceManager>& /*rm*/)
+void Font::reload()
 {
+	if (mLoaded)
+		return;
+
 	rebuildTextures();
+	mLoaded = true;
 }
 
-void Font::unload(std::shared_ptr<ResourceManager>& /*rm*/)
+bool Font::unload()
 {
-	unloadTextures();
+	if (mLoaded)
+	{
+		unloadTextures();
+		mLoaded = false;
+		return true;
+	}
+
+	return false;
 }
 
 std::shared_ptr<Font> Font::get(int size, const std::string& path)
@@ -140,7 +160,7 @@ Font::FontTexture::~FontTexture()
 
 bool Font::FontTexture::findEmpty(const Vector2i& size, Vector2i& cursor_out)
 {
-	if(size.x() >= textureSize.x() || size.y() >= textureSize.y())
+	if (size.x() >= textureSize.x() || size.y() >= textureSize.y())
 		return false;
 
 	if(writePos.x() + size.x() >= textureSize.x() &&
@@ -235,9 +255,10 @@ std::vector<std::string> getFallbackFontPaths()
 	fontDir += "\\Fonts\\";
 
 	const char* fontNames[] = {
+		"glyphs.ttf",   // latin		
+		"arial.ttf",   // latin		
 		"meiryo.ttc", // japanese
-		"simhei.ttf", // chinese
-		"arial.ttf"   // latin
+		"simhei.ttf" // chinese		
 	};
 
 	//prepend to font file names
@@ -247,7 +268,11 @@ std::vector<std::string> getFallbackFontPaths()
 	for(unsigned int i = 0; i < sizeof(fontNames) / sizeof(fontNames[0]); i++)
 	{
 		std::string path = fontDir + fontNames[i];
-		if(ResourceManager::getInstance()->fileExists(path))
+
+		if (i == 0)
+			path = ":/glyphs.ttf";
+
+		if (ResourceManager::getInstance()->fileExists(path))
 			fontPaths.push_back(path);
 	}
 
@@ -284,18 +309,17 @@ FT_Face Font::getFaceForChar(unsigned int id)
 	for(unsigned int i = 0; i < fallbackFonts.size() + 1; i++)
 	{
 		auto fit = mFaceCache.find(i);
-
-		if(fit == mFaceCache.cend()) // doesn't exist yet
-		{
+		if (fit == mFaceCache.cend()) // doesn't exist yet
+		{		
 			// i == 0 -> mPath
 			// otherwise, take from fallbackFonts
 			const std::string& path = (i == 0 ? mPath : fallbackFonts.at(i - 1));
-			ResourceData data = ResourceManager::getInstance()->getFileData(path);
-			mFaceCache[i] = std::unique_ptr<FontFace>(new FontFace(std::move(data), mSize));
+			ResourceData data = ResourceManager::getInstance()->getFileData(path);			
+			mFaceCache[i] = std::unique_ptr<FontFace>(new FontFace(std::move(data), i == 1 && mMaxGlyphHeight > 0 ? mMaxGlyphHeight : mSize)); // Reduce size of gyphs ????
 			fit = mFaceCache.find(i);
 		}
 
-		if(FT_Get_Char_Index(fit->second->face, id) != 0)
+		if (FT_Get_Char_Index(fit->second->face, id) != 0)
 			return fit->second->face;
 	}
 
@@ -310,10 +334,20 @@ void Font::clearFaceCache()
 
 Font::Glyph* Font::getGlyph(unsigned int id)
 {
-	// is it already loaded?
-	auto it = mGlyphMap.find(id);
-	if(it != mGlyphMap.cend())
-		return &it->second;
+	if (id < 255)
+	{
+		// FCA : optimisation : array is always really fastest than a map
+		Glyph* fastCache = mGlyphCacheArray[id];
+		if (fastCache != NULL)
+			return fastCache;
+	}
+	else
+	{
+		// is it already loaded?
+		auto it = mGlyphMap.find(id);
+		if (it != mGlyphMap.cend())
+			return it->second;
+	}
 
 	// nope, need to make a glyph
 	FT_Face face = getFaceForChar(id);
@@ -325,7 +359,7 @@ Font::Glyph* Font::getGlyph(unsigned int id)
 
 	FT_GlyphSlot g = face->glyph;
 
-	if(FT_Load_Char(face, id, FT_LOAD_RENDER))
+	if (FT_Load_Char(face, id, FT_LOAD_RENDER))
 	{
 		LOG(LogError) << "Could not find glyph for character " << id << " for font " << mPath << ", size " << mSize << "!";
 		return NULL;
@@ -345,14 +379,13 @@ Font::Glyph* Font::getGlyph(unsigned int id)
 	}
 
 	// create glyph
-	Glyph& glyph = mGlyphMap[id];
+	Glyph* pGlyph = new Glyph();
 	
-	glyph.texture = tex;
-	glyph.texPos = Vector2f(cursor.x() / (float)tex->textureSize.x(), cursor.y() / (float)tex->textureSize.y());
-	glyph.texSize = Vector2f(glyphSize.x() / (float)tex->textureSize.x(), glyphSize.y() / (float)tex->textureSize.y());
-
-	glyph.advance = Vector2f((float)g->metrics.horiAdvance / 64.0f, (float)g->metrics.vertAdvance / 64.0f);
-	glyph.bearing = Vector2f((float)g->metrics.horiBearingX / 64.0f, (float)g->metrics.horiBearingY / 64.0f);
+	pGlyph->texture = tex;
+	pGlyph->texPos = Vector2f(cursor.x() / (float)tex->textureSize.x(), cursor.y() / (float)tex->textureSize.y());
+	pGlyph->texSize = Vector2f(glyphSize.x() / (float)tex->textureSize.x(), glyphSize.y() / (float)tex->textureSize.y());	
+	pGlyph->advance = Vector2f((float)g->metrics.horiAdvance / 64.0f, (float)g->metrics.vertAdvance / 64.0f);
+	pGlyph->bearing = Vector2f((float)g->metrics.horiBearingX / 64.0f, (float)g->metrics.horiBearingY / 64.0f);
 
 	// upload glyph bitmap to texture
 	glBindTexture(GL_TEXTURE_2D, tex->textureId);
@@ -360,11 +393,15 @@ Font::Glyph* Font::getGlyph(unsigned int id)
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	// update max glyph height
-	if(glyphSize.y() > mMaxGlyphHeight)
+	if (id != 61446 && glyphSize.y() > mMaxGlyphHeight)
 		mMaxGlyphHeight = glyphSize.y();
 
-	// done
-	return &glyph;
+	mGlyphMap[id] = pGlyph;
+
+	if (id < 255)
+		mGlyphCacheArray[id] = pGlyph;
+
+	return pGlyph;
 }
 
 // completely recreate the texture data for all textures based on mGlyphs information
@@ -372,9 +409,7 @@ void Font::rebuildTextures()
 {
 	// recreate OpenGL textures
 	for(auto it = mTextures.begin(); it != mTextures.end(); it++)
-	{
 		it->initTexture();
-	}
 
 	// reupload the texture data
 	for(auto it = mGlyphMap.cbegin(); it != mGlyphMap.cend(); it++)
@@ -385,11 +420,11 @@ void Font::rebuildTextures()
 		// load the glyph bitmap through FT
 		FT_Load_Char(face, it->first, FT_LOAD_RENDER);
 
-		FontTexture* tex = it->second.texture;
+		FontTexture* tex = it->second->texture;
 		
 		// find the position/size
-		Vector2i cursor((int)(it->second.texPos.x() * tex->textureSize.x()), (int)(it->second.texPos.y() * tex->textureSize.y()));
-		Vector2i glyphSize((int)(it->second.texSize.x() * tex->textureSize.x()), (int)(it->second.texSize.y() * tex->textureSize.y()));
+		Vector2i cursor((int)(it->second->texPos.x() * tex->textureSize.x()), (int)(it->second->texPos.y() * tex->textureSize.y()));
+		Vector2i glyphSize((int)(it->second->texSize.x() * tex->textureSize.x()), (int)(it->second->texSize.y() * tex->textureSize.y()));
 		
 		// upload to texture
 		glBindTexture(GL_TEXTURE_2D, tex->textureId);
@@ -701,18 +736,26 @@ void TextCache::setColor(unsigned int color)
 std::shared_ptr<Font> Font::getFromTheme(const ThemeData::ThemeElement* elem, unsigned int properties, const std::shared_ptr<Font>& orig)
 {
 	using namespace ThemeFlags;
-	if(!(properties & FONT_PATH) && !(properties & FONT_SIZE))
+	if (!(properties & FONT_PATH) && !(properties & FONT_SIZE))
 		return orig;
-	
+
 	std::shared_ptr<Font> font;
 	int size = (orig ? orig->mSize : FONT_SIZE_MEDIUM);
 	std::string path = (orig ? orig->mPath : getDefaultPath());
 
 	float sh = (float)Renderer::getScreenHeight();
-	if(properties & FONT_SIZE && elem->has("fontSize")) 
-		size = (int)(sh * elem->get<float>("fontSize"));
-	if(properties & FONT_PATH && elem->has("fontPath"))
-		path = elem->get<std::string>("fontPath");
+	if (properties & FONT_SIZE && elem->has("fontSize"))
+	{
+		if ((int)(sh * elem->get<float>("fontSize")) > 0)
+			size = (int)(sh * elem->get<float>("fontSize"));
+	}
+
+	if (properties & FONT_PATH && elem->has("fontPath"))
+	{
+		std::string tmppath = elem->get<std::string>("fontPath");
+		if (ResourceManager::getInstance()->fileExists(tmppath))
+			path = tmppath;
+	}
 
 	return get(size, path);
 }

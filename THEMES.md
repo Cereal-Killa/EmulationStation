@@ -69,8 +69,8 @@ How it works
 
 Everything must be inside a `<theme>` tag.
 
-**The `<formatVersion>` tag *must* be specified**.  This is the version of the theming system the theme was designed for.  The current version is 3.
-
+**The `<formatVersion>` tag *must* be specified**.  This is the version of the theming system the theme was designed for.  
+The current version is 4.
 
 
 A *view* can be thought of as a particular "screen" within EmulationStation.  Views are defined like this:
@@ -109,6 +109,14 @@ Or, you can create your own elements by adding `extra="true"` (as is done in the
 		<propertyNameHere>ValueHere</propertyNameHere>
 ```
 
+A *customView* can be thought of as a particular "screen" within EmulationStation. 
+Custom Views must inherit one of the standard views and are defined like this:
+
+```xml
+<customView name="ViewNameHere" inherits="BaseViewNameHere">
+	... define elements here ...
+</customView>
+```
 
 
 
@@ -124,7 +132,7 @@ You can include theme files within theme files, similar to `#include` in C (thou
 `~/.emulationstation/all_themes.xml`:
 ```xml
 <theme>
-	<formatVersion>3</formatVersion>
+	<formatVersion>4</formatVersion>
 	<view name="detailed">
 		<text name="description">
 			<fontPath>./all_themes/myfont.ttf</fontPath>
@@ -137,7 +145,7 @@ You can include theme files within theme files, similar to `#include` in C (thou
 `~/.emulationstation/snes/theme.xml`:
 ```xml
 <theme>
-	<formatVersion>3</formatVersion>
+	<formatVersion>4</formatVersion>
 	<include>./../all_themes.xml</include>
 	<view name="detailed">
 		<text name="description">
@@ -150,7 +158,7 @@ You can include theme files within theme files, similar to `#include` in C (thou
 Is equivalent to this `snes/theme.xml`:
 ```xml
 <theme>
-	<formatVersion>3</formatVersion>
+	<formatVersion>4</formatVersion>
 	<view name="detailed">
 		<text name="description">
 			<fontPath>./all_themes/myfont.ttf</fontPath>
@@ -170,7 +178,7 @@ Sometimes you want to apply the same properties to the same elements across mult
 
 ```xml
 <theme>
-	<formatVersion>3</formatVersion>
+	<formatVersion>4</formatVersion>
 	<view name="basic, grid, system">
 		<image name="logo">
 			<path>./snes_art/snes_header.png</path>
@@ -284,7 +292,7 @@ You can now change the order in which elements are rendered by setting `zIndex` 
 * `imagegrid name="gamegrid"` - 20
 * Media
 	* `image name="md_image"` - 30
-	* `video name="md_video"` - 30
+	* `video name="md_video"` - 31
 	* `image name="md_marquee"` - 35
 * Metadata - 40
 	* Labels
@@ -392,6 +400,10 @@ Reference
 
 		* `image name="md_image"` - POSITION | SIZE | Z_INDEX
 			- Path is the "image" metadata for the currently selected game.
+		* `video name="md_video"` - POSITION | SIZE | Z_INDEX
+			- Path is the "video" metadata for the currently selected game.			
+		* `image name="md_marquee"` - POSITION | SIZE | Z_INDEX
+			- Path is the "marquee" metadata for the currently selected game.
 		* `rating name="md_rating"` - ALL
 			- The "rating" metadata.
 		* `datetime name="md_releasedate"` - ALL
@@ -534,10 +546,33 @@ Reference
 	- Displays details of the system currently selected in the carousel.
 * You can use extra elements (elements with `extra="true"`) to add your own backgrounds, etc.  They will be displayed behind the carousel, and scroll relative to the carousel.
 
+#### menu
+* `helpsystem name="help"` - ALL
+	- The help system style for this view. If not defined, menus will have the same helpsystem as defined in system view.
+* `menuBackground name="menubg"` - COLOR | PATH | FADEPATH
+	- The background behind menus. you can set an image and/or change color (alpha supported)
+	
+* `menuSwitch name="menuswitch"` - PATHON | PATHOFF
+	- Images for the on/off switch in menus
+* `menuSlider name="menuslider"` - PATH
+	- Image for the slider knob in menus
+* `menuButton name="menubutton"` - PATH | FILLEDPATH
+	- Images for menu buttons
+* `menuText name="menutext"` - FONTPATH | FONTSIZE | COLOR
+	- text for all menu entries
+* `menuText name="menutitle"` - FONTPATH | FONTSIZE | COLOR
+	- text for menu titles
+* `menuText name="menufooter"` - FONTPATH | FONTSIZE | COLOR
+	- text for menu footers or subtitles
+* `menuTextSmall name="menutextsmall"` - FONTPATH | FONTSIZE | COLOR
+	- text for menu entries in smallerfont
+	
+menu is used to theme helpsystem and ES menus.
 
 ## Types of properties:
 
 * NORMALIZED_PAIR - two decimals, in the range [0..1], delimited by a space.  For example, `0.25 0.5`.  Most commonly used for position (x and y coordinates) and size (width and height).
+* NORMALIZED_RECT - four decimals, in the range [0..1], delimited by a space. For example, `0.25 0.5 0.10 0.30`.  Most commonly used for padding to store top, left, bottom and right coordinates.
 * PATH - a path.  If the first character is a `~`, it will be expanded into the environment variable for the home path (`$HOME` for Linux or `%HOMEPATH%` for Windows).  If the first character is a `.`, it will be expanded to the theme file's directory, allowing you to specify resources relative to the theme file, like so: `./../general_art/myfont.ttf`.
 * BOOLEAN - `true`/`1` or `false`/`0`.
 * COLOR - a hexidecimal RGB or RGBA color (6 or 8 digits).  If 6 digits, will assume the alpha channel is `FF` (not transparent).
@@ -578,20 +613,35 @@ Can be created as an extra.
 	- Multiply each pixel's color by this color. For example, an all-white image with `<color>FF0000</color>` would become completely red.  You can also control the transparency of an image with `<color>FFFFFFAA</color>` - keeping all the pixels their normal color and only affecting the alpha channel.
 * `zIndex` - type: FLOAT.
 	- z-index value for component.  Components will be rendered in order of z-index value from low to high.
+* `reflexion` - type: NORMALIZED_PAIR.
+	- NEW : table reflexion effect. First item is top position alpha, second is bottom alpha.
+
 
 #### imagegrid
 
 * `pos` - type: NORMALIZED_PAIR.
 * `size` - type: NORMALIZED_PAIR.
     - The size of the grid. Take care the selected tile can go out of the grid size, so don't position the grid too close to another element or the screen border.
-* `margin` - type: NORMALIZED_PAIR.
+* `margin` - type: NORMALIZED_PAIR. Margin between tiles.
+* `padding` - type: NORMALIZED_RECT. 
+    - NEW : Padding for displaying tiles. 
+* `autoLayout` - type: NORMALIZED_PAIR. 
+    - NEW : Number of column and rows in the grid (integer values).
+* `autoLayoutSelectedZoom` - type: FLOAT. 
+    - NEW : Zoom factor to apply when a tile is selected.    
+* `imageSource` - type: STRING.
+    - NEW : Selects the image to display. `thumbnail` by default, can also be set to `image` or `marquee`. 
+* `showVideoAtDelay` - type: FLOAT.
+    - NEW : delay in millseconds to display video, when the tile is selected.
 * `gameImage` - type: PATH.
     - The default image used for games which doesn't have an image.
 * `folderImage` - type: PATH.
     - The default image used for folders which doesn't have an image.
 * `scrollDirection` - type: STRING.
     - `vertical` by default, can also be set to `horizontal`. Not that in `horizontal` mod, the tiles are ordered from top to bottom, then from left to right.
-
+* `zIndex` - type: FLOAT.
+    - NEW : z-index value for component.  Components will be rendered in order of z-index value from low to high.
+	
 #### gridtile
 
 * `size` - type: NORMALIZED_PAIR.
@@ -610,7 +660,13 @@ Can be created as an extra.
     - Set the color of the center part of the ninepatch. The default tile background center color and selected tile background center color have no influence on each others.
 * `backgroundEdgeColor` - type: COLOR.
     - Set the color of the edge parts of the ninepatch. The default tile background edge color and selected tile background edge color have no influence on each others.
-
+* `selectionMode` - type: STRING.
+    - NEW : Selects if the background is over the full tile or only the image. `full` by default, can also be set to `image`. 
+* `imageSizeMode` - type: STRING.
+    - NEW : Selects the image sizing mode. `maxSize` by default, can also be set to `minSize` (outer zoom) or `size` (stretch). 
+* `reflexion` - type: NORMALIZED_PAIR.
+	- NEW : table reflexion effect. First item is top position alpha, second is bottom alpha.
+    
 #### video
 
 * `pos` - type: NORMALIZED_PAIR.
@@ -634,7 +690,9 @@ Can be created as an extra.
 	- If true, playing of video will be delayed for `delayed` seconds, when game is selected.
 * `zIndex` - type: FLOAT.
 	- z-index value for component.  Components will be rendered in order of z-index value from low to high.
-
+* `path` - type: PATH.
+	- NEW : Path to video file if video is an extra.
+	
 #### text
 
 Can be created as an extra.
@@ -664,6 +722,10 @@ Can be created as an extra.
 * `lineSpacing` - type: FLOAT.  Controls the space between lines (as a multiple of font height).  Default is 1.5.
 * `zIndex` - type: FLOAT.
 	- z-index value for component.  Components will be rendered in order of z-index value from low to high.
+* `glowColor` - type: COLOR;
+	- NEW : Defines the color of the glow around the text.
+* `glowSize` - type: FLOAT.
+	- NEW : Defines the size of the glow around the text.
 
 #### textlist
 
@@ -673,6 +735,8 @@ Can be created as an extra.
 	- Where on the component `pos` refers to.  For example, an origin of `0.5 0.5` and a `pos` of `0.5 0.5` would place the component exactly in the middle of the screen.  If the "POSITION" and "SIZE" attributes are themable, "ORIGIN" is implied.
 * `selectorColor` - type: COLOR.
 	- Color of the "selector bar."
+* `selectorGradientColor` - type: NORMALIZED_PAIR. 
+    - NEW : Bottom color for the gradient of the "selector bar."
 * `selectorImagePath` - type: PATH.
 	- Path to image to render in place of "selector bar."
 * `selectorImageTile` - type: BOOLEAN.
@@ -731,14 +795,38 @@ EmulationStation borrows the concept of "nine patches" from Android (or "9-Slice
 	- z-index value for component.  Components will be rendered in order of z-index value from low to high.	
 
 #### datetime
-
 * `pos` - type: NORMALIZED_PAIR.
 * `size` - type: NORMALIZED_PAIR.
-	- You should probably not set this.  Leave it to `fontSize`.
+	- Possible combinations:
+	- `0 0` - automatically size so text fits on one line (expanding horizontally).
+	- `w 0` - automatically wrap text so it doesn't go beyond `w` (expanding vertically).
+	- `w h` - works like a "text box."  If `h` is non-zero and `h` <= `fontSize` (implying it should be a single line of text), text that goes beyond `w` will be truncated with an elipses (...).
+* `origin` - type: NORMALIZED_PAIR.
+	- Where on the component `pos` refers to.  For example, an origin of `0.5 0.5` and a `pos` of `0.5 0.5` would place the component exactly in the middle of the screen.  If the "POSITION" and "SIZE" attributes are themable, "ORIGIN" is implied.
+* `rotation` - type: FLOAT.
+	- angle in degrees that the text should be rotated.  Positive values will rotate clockwise, negative values will rotate counterclockwise.
+* `rotationOrigin` - type: NORMALIZED_PAIR.
+	- Point around which the text will be rotated. Defaults to `0.5 0.5`.
 * `color` - type: COLOR.
+* `backgroundColor` - type: COLOR;
 * `fontPath` - type: PATH.
+	- Path to a truetype font (.ttf).
 * `fontSize` - type: FLOAT.
+	- Size of the font as a percentage of screen height (e.g. for a value of `0.1`, the text's height would be 10% of the screen height).
+* `alignment` - type: STRING.
+	- Valid values are "left", "center", or "right".  Controls alignment on the X axis.  "center" will also align vertically.
 * `forceUppercase` - type: BOOLEAN.  Draw text in uppercase.
+* `lineSpacing` - type: FLOAT.  Controls the space between lines (as a multiple of font height).  Default is 1.5.
+* `zIndex` - type: FLOAT.
+	- z-index value for component.  Components will be rendered in order of z-index value from low to high.
+* `displayRelative` - type: BOOLEAN.  Renders the datetime as a a relative string (ex: 'x days ago')
+* `format` - type: STRING. Specifies format for rendering datetime.
+	- %Y: The year, including the century (1900)
+	- %m: The month number [01,12]
+	- %d: The day of the month [01,31]
+	- %H: The hour (24-hour clock) [00,23]
+	- %M: The minute [00,59]
+	- %S: The second [00,59]
 
 #### sound
 
@@ -768,6 +856,10 @@ EmulationStation borrows the concept of "nine patches" from Android (or "9-Slice
 * `color` - type: COLOR.
 	- Controls the color of the carousel background.
 	- Default is FFFFFFD8
+* `colorGradient` - type: COLOR.
+	- NEW : Color for the end of gradient
+* `gradientType` - type: STRING.
+	- NEW : Sets the gradient direction. Accepted values are "horizontal" and "vertical".
 * `logoSize` - type: NORMALIZED_PAIR.  Default is "0.25 0.155"
 * `logoScale` - type: FLOAT.
 	- Selected logo is increased in size by this scale
@@ -789,6 +881,24 @@ EmulationStation borrows the concept of "nine patches" from Android (or "9-Slice
 	- Default is 3
 * `zIndex` - type: FLOAT.
 	- z-index value for component.  Components will be rendered in order of z-index value from low to high.  
+* `logoPos` - type: NORMALIZED_PAIR.  
+	- NEW : Set the logo position if it is not centered.
+	
+#### menuText & menuTextSmall
+
+* `color` - type: COLOR. 
+	- Default is 777777FF
+* `fontPath` - type: PATH.
+	- Path to a truetype font (.ttf).
+* `fontSize` - type: FLOAT.
+	- Size of the font as a percentage of screen height (e.g. for a value of `0.1`, the text's height would be 10% of the screen height). Default is 0.085 for menutitle, 0.045 for menutext and 0.035 for menufooter and menutextsmall.
+* `separatorColor` - type: COLOR. 
+	- Default is C6C7C6FF. Color of lines that separates menu entries.
+* `selectedColor` - type: COLOR. 
+	- Default is FFFFFFFF. Color of text for selected menu entry.
+* `selectorColor` - type: COLOR. 
+	- Default is 878787FF. Color of the selector bar.
+	
 
 The help system is a special element that displays a context-sensitive list of actions the user can take at any time.  You should try and keep the position constant throughout every screen.  Keep in mind the "default" settings (including position) are used whenever the user opens a menu.
 

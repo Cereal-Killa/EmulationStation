@@ -10,12 +10,16 @@
 #include <nanosvg/nanosvgrast.h>
 #include <assert.h>
 #include <string.h>
+#include "Renderer.h"
 
 #define DPI 96
 
+bool TextureData::OPTIMIZEVRAM = false;
+
 TextureData::TextureData(bool tile) : mTile(tile), mTextureID(0), mDataRGBA(nullptr), mScalable(false),
-									  mWidth(0), mHeight(0), mSourceWidth(0.0f), mSourceHeight(0.0f)
+									  mWidth(0), mHeight(0), mSourceWidth(0.0f), mSourceHeight(0.0f), mMaxSize(MaxSizeInfo()), mPackedSize(Vector2i(0,0)), mBaseSize(Vector2i(0, 0))
 {
+	
 }
 
 TextureData::~TextureData()
@@ -35,11 +39,9 @@ void TextureData::initFromPath(const std::string& path)
 bool TextureData::initSVGFromMemory(const unsigned char* fileData, size_t length)
 {
 	// If already initialised then don't read again
-	{
-		std::unique_lock<std::mutex> lock(mMutex);
-		if (mDataRGBA)
-			return true;
-	}
+	std::unique_lock<std::mutex> lock(mMutex);
+	if (mDataRGBA)
+		return true;
 
 	// nsvgParse excepts a modifiable, null-terminated string
 	char* copy = (char*)malloc(length + 1);
@@ -55,6 +57,9 @@ bool TextureData::initSVGFromMemory(const unsigned char* fileData, size_t length
 		return false;
 	}
 
+	if (svgImage->width == 0 || svgImage->height == 0)
+		return false;
+
 	// We want to rasterise this texture at a specific resolution. If the source size
 	// variables are set then use them otherwise set them from the parsed file
 	if ((mSourceWidth == 0.0f) && (mSourceHeight == 0.0f))
@@ -62,8 +67,14 @@ bool TextureData::initSVGFromMemory(const unsigned char* fileData, size_t length
 		mSourceWidth = svgImage->width;
 		mSourceHeight = svgImage->height;
 	}
-	mWidth = (size_t)Math::round(mSourceWidth);
-	mHeight = (size_t)Math::round(mSourceHeight);
+	else 
+		mSourceWidth = (mSourceHeight * svgImage->width) / svgImage->height; // FCATMP : Always keep source aspect ratio
+
+//	mWidth = (size_t)Math::round(mSourceWidth);
+//	mHeight = (size_t)Math::round(mSourceHeight);
+
+	mWidth = (int) mSourceWidth;
+	mHeight = (int) mSourceHeight;
 
 	if (mWidth == 0)
 	{
@@ -76,6 +87,26 @@ bool TextureData::initSVGFromMemory(const unsigned char* fileData, size_t length
 		mHeight = (size_t)Math::round(((float)mWidth / svgImage->width) * svgImage->height);
 	}
 
+	mBaseSize = Vector2i(mWidth, mHeight);
+	
+	if (mMaxSize.x() > 0 && mMaxSize.y() > 0 && mHeight < mMaxSize.y() && mWidth < mMaxSize.x()) // FCATMP
+	{
+		Vector2i sz = ImageIO::adjustPictureSize(Vector2i(mWidth, mHeight), Vector2i(mMaxSize.x(), mMaxSize.y()), mMaxSize.externalZoom());
+		mHeight = sz.y();
+		mWidth = (int)((mHeight * svgImage->width) / svgImage->height);
+	}
+	
+	if (OPTIMIZEVRAM && mMaxSize.x() > 0 && mMaxSize.y() > 0 && (mWidth > mMaxSize.x() || mHeight > mMaxSize.y()))
+	{
+		Vector2i sz = ImageIO::adjustPictureSize(Vector2i(mWidth, mHeight), Vector2i(mMaxSize.x(), mMaxSize.y()), mMaxSize.externalZoom());
+		mHeight = sz.y();	
+		mWidth = (mHeight * svgImage->width) / svgImage->height;
+
+		mPackedSize = Vector2i(mWidth, mHeight);
+	}
+	else
+		mPackedSize = Vector2i(0, 0);
+	
 	unsigned char* dataRGBA = new unsigned char[mWidth * mHeight * 4];
 
 	NSVGrasterizer* rast = nsvgCreateRasterizer();
@@ -84,10 +115,32 @@ bool TextureData::initSVGFromMemory(const unsigned char* fileData, size_t length
 
 	ImageIO::flipPixelsVert(dataRGBA, mWidth, mHeight);
 
-	std::unique_lock<std::mutex> lock(mMutex);
 	mDataRGBA = dataRGBA;
 
 	return true;
+}
+
+bool TextureData::isRequiredTextureSizeOk()
+{
+	if (!OPTIMIZEVRAM)
+		return true;
+
+	if (mPackedSize == Vector2i(0, 0))
+		return true;
+
+	if (mBaseSize == Vector2i(0, 0))
+		return true;
+
+	if (mMaxSize.empty())
+		return true;
+
+	if ((int) mMaxSize.x() <= mPackedSize.x() || (int) mMaxSize.y() <= mPackedSize.y())
+		return true;
+
+	if (mBaseSize.x() <= mPackedSize.x() || mBaseSize.y() <= mPackedSize.y())
+		return true;
+
+	return false;
 }
 
 bool TextureData::initImageFromMemory(const unsigned char* fileData, size_t length)
@@ -100,9 +153,18 @@ bool TextureData::initImageFromMemory(const unsigned char* fileData, size_t leng
 		if (mDataRGBA)
 			return true;
 	}
+	
 
-	std::vector<unsigned char> imageRGBA = ImageIO::loadFromMemoryRGBA32((const unsigned char*)(fileData), length, width, height);
-	if (imageRGBA.size() == 0)
+	auto x = OPTIMIZEVRAM ? mMaxSize.x() : Renderer::getScreenWidth();
+	if (x > Renderer::getScreenWidth())
+		x = Renderer::getScreenWidth();
+
+	auto y = OPTIMIZEVRAM ? mMaxSize.y() : Renderer::getScreenHeight();
+	if (y > Renderer::getScreenHeight())
+		y = Renderer::getScreenHeight();
+
+	unsigned char* imageRGBA = ImageIO::loadFromMemoryRGBA32Ex((const unsigned char*)(fileData), length, width, height, x, y, mMaxSize.externalZoom(), mBaseSize, mPackedSize);
+	if (imageRGBA == NULL)
 	{
 		LOG(LogError) << "Could not initialize texture from memory, invalid data!  (file path: " << mPath << ", data ptr: " << (size_t)fileData << ", reported size: " << length << ")";
 		return false;
@@ -112,8 +174,26 @@ bool TextureData::initImageFromMemory(const unsigned char* fileData, size_t leng
 	mSourceHeight = (float) height;
 	mScalable = false;
 
-	return initFromRGBA(imageRGBA.data(), width, height);
+	return initFromRGBAEx(imageRGBA, width, height);
 }
+
+
+void TextureData::setMaxSize(MaxSizeInfo maxSize)
+{
+	if (mSourceWidth == 0 || mSourceHeight == 0)
+		mMaxSize = maxSize;
+	else
+	{
+		Vector2i value = ImageIO::adjustPictureSize(Vector2i(mSourceWidth, mSourceHeight), Vector2i(mMaxSize.x(), mMaxSize.y()), mMaxSize.externalZoom());
+		Vector2i newVal = ImageIO::adjustPictureSize(Vector2i(mSourceWidth, mSourceHeight), Vector2i(maxSize.x(), maxSize.y()), mMaxSize.externalZoom());
+
+		if (newVal.x() > value.x() || newVal.y() > value.y())
+			mMaxSize = maxSize;
+
+		//if (mMaxSize.x() < maxSize.x() || mMaxSize.y() < maxSize.y())
+	}
+};
+
 
 bool TextureData::initFromRGBA(const unsigned char* dataRGBA, size_t width, size_t height)
 {
@@ -130,6 +210,21 @@ bool TextureData::initFromRGBA(const unsigned char* dataRGBA, size_t width, size
 	return true;
 }
 
+bool TextureData::initFromRGBAEx(unsigned char* dataRGBA, size_t width, size_t height)
+{
+	// If already initialised then don't read again
+	std::unique_lock<std::mutex> lock(mMutex);
+	if (mDataRGBA)
+		return true;
+
+	// Take a copy
+	mDataRGBA = dataRGBA;
+	mWidth = width;
+	mHeight = height;
+
+	return true;
+}
+
 bool TextureData::load()
 {
 	bool retval = false;
@@ -137,17 +232,25 @@ bool TextureData::load()
 	// Need to load. See if there is a file
 	if (!mPath.empty())
 	{
+#ifdef WIN32	
+		 TRACE("TextureData::load(" << mPath << ", " << (mMaxSize.empty() ? "" : "(hasMaxSize)") << ")")
+#endif
+
 		std::shared_ptr<ResourceManager>& rm = ResourceManager::getInstance();
+
 		const ResourceData& data = rm->getFileData(mPath);
 		// is it an SVG?
 		if (mPath.substr(mPath.size() - 4, std::string::npos) == ".svg")
 		{
-			mScalable = true;
+			mScalable = true; // ??? interest ?
 			retval = initSVGFromMemory((const unsigned char*)data.ptr.get(), data.length);
 		}
 		else
 			retval = initImageFromMemory((const unsigned char*)data.ptr.get(), data.length);
 	}
+
+	
+
 	return retval;
 }
 
@@ -156,6 +259,7 @@ bool TextureData::isLoaded()
 	std::unique_lock<std::mutex> lock(mMutex);
 	if (mDataRGBA || (mTextureID != 0))
 		return true;
+
 	return false;
 }
 
@@ -177,6 +281,7 @@ bool TextureData::uploadAndBind()
 		// Make sure we're ready to upload
 		if ((mWidth == 0) || (mHeight == 0) || (mDataRGBA == nullptr))
 			return false;
+
 		glGetError();
 		//now for the openGL texture stuff
 		glGenTextures(1, &mTextureID);
@@ -191,6 +296,7 @@ bool TextureData::uploadAndBind()
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapMode);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapMode);
 	}
+
 	return true;
 }
 
@@ -239,14 +345,24 @@ float TextureData::sourceHeight()
 	return mSourceHeight;
 }
 
+void TextureData::setTemporarySize(float width, float height)
+{
+	mWidth = width;
+	mHeight = height;
+	mSourceWidth = width;
+	mSourceHeight = height;
+}
+
 void TextureData::setSourceSize(float width, float height)
 {
 	if (mScalable)
 	{
-		if ((mSourceWidth != width) || (mSourceHeight != height))
+		//if ((mSourceWidth != width) || (mSourceHeight != height))
+		if (mSourceHeight < height) // FCATMP
 		{
 			mSourceWidth = width;
 			mSourceHeight = height;
+
 			releaseVRAM();
 			releaseRAM();
 		}

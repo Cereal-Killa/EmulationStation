@@ -2,14 +2,16 @@
 
 #include "Renderer.h"
 #include "Settings.h"
+#include "ThemeData.h"
 
 using namespace GridFlags;
 
-ComponentGrid::ComponentGrid(Window* window, const Vector2i& gridDimensions) : GuiComponent(window), 
+ComponentGrid::ComponentGrid(Window* window, const Vector2i& gridDimensions) : GuiComponent(window),
 	mGridSize(gridDimensions), mCursor(0, 0)
 {
 	assert(gridDimensions.x() > 0 && gridDimensions.y() > 0);
 
+	mSeparatorColor = ThemeData::getMenuTheme()->Text.separatorColor;
 	mCells.reserve(gridDimensions.x() * gridDimensions.y());
 
 	mColWidths = new float[gridDimensions.x()];
@@ -195,7 +197,7 @@ void ComponentGrid::updateSeparators()
 	}
 
 	mLineColors.reserve(mLines.size());
-	Renderer::buildGLColorArray((GLubyte*)mLineColors.data(), 0xC6C7C6FF, (unsigned int)mLines.size());
+	Renderer::buildGLColorArray((GLubyte*)mLineColors.data(), mSeparatorColor, (unsigned int)mLines.size());
 }
 
 void ComponentGrid::onSizeChanged()
@@ -233,24 +235,30 @@ bool ComponentGrid::input(InputConfig* config, Input input)
 	if(!input.value)
 		return false;
 
-	if(config->isMappedTo("down", input))
+	bool result = false;
+
+	if(config->isMappedLike("down", input))
 	{
-		return moveCursor(Vector2i(0, 1));
+		result = moveCursor(Vector2i(0, 1));
 	}
-	if(config->isMappedTo("up", input))
+	if(config->isMappedLike("up", input))
 	{
-		return moveCursor(Vector2i(0, -1));
+		result = moveCursor(Vector2i(0, -1));
 	}
-	if(config->isMappedTo("left", input))
+	if(config->isMappedLike("left", input))
 	{
-		return moveCursor(Vector2i(-1, 0));
+		result = moveCursor(Vector2i(-1, 0));
 	}
-	if(config->isMappedTo("right", input))
+	if(config->isMappedLike("right", input))
 	{
-		return moveCursor(Vector2i(1, 0));
+		result = moveCursor(Vector2i(1, 0));
 	}
 
-	return false;
+	if (!result && mUnhandledInputCallback) {
+		return mUnhandledInputCallback(config, input);
+	}
+
+	return result;
 }
 
 void ComponentGrid::resetCursor()
@@ -445,11 +453,11 @@ std::vector<HelpPrompt> ComponentGrid::getHelpPrompts()
 	}
 
 	if(canScrollHoriz && canScrollVert)
-		prompts.push_back(HelpPrompt("up/down/left/right", "choose"));
+		prompts.push_back(HelpPrompt("up/down/left/right", _T("CHOOSE")));
 	else if(canScrollHoriz)
-		prompts.push_back(HelpPrompt("left/right", "choose"));
+		prompts.push_back(HelpPrompt("left/right", _T("CHOOSE")));
 	else if(canScrollVert)
-		prompts.push_back(HelpPrompt("up/down", "choose"));
+		prompts.push_back(HelpPrompt("up/down", _T("CHOOSE")));
 
 	return prompts;
 }

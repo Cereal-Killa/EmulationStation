@@ -7,15 +7,35 @@
 #include "Settings.h"
 #include "SystemData.h"
 
-BasicGameListView::BasicGameListView(Window* window, FileData* root)
+BasicGameListView::BasicGameListView(Window* window, FolderData* root)
 	: ISimpleGameListView(window, root), mList(window)
 {
+	mLoaded = false;
+
 	mList.setSize(mSize.x(), mSize.y() * 0.8f);
 	mList.setPosition(0, mSize.y() * 0.2f);
 	mList.setDefaultZIndex(20);
-	addChild(&mList);
+	addChild(&mList);		
 
-	populateList(root->getChildrenListToDisplay());
+	populateList(mRoot->getChildrenListToDisplay());
+}
+
+void BasicGameListView::onShow()
+{
+	/*
+	if (!mLoaded)
+	{
+		populateList(mRoot->getChildrenListToDisplay());
+		mLoaded = true;
+	}
+	*/
+	ISimpleGameListView::onShow();
+}
+
+void BasicGameListView::setThemeName(std::string name)
+{
+	ISimpleGameListView::setThemeName(name);
+	// mGrid.setThemeName(getName());
 }
 
 void BasicGameListView::onThemeChanged(const std::shared_ptr<ThemeData>& theme)
@@ -29,7 +49,7 @@ void BasicGameListView::onThemeChanged(const std::shared_ptr<ThemeData>& theme)
 
 void BasicGameListView::onFileChanged(FileData* file, FileChangeType change)
 {
-	if(change == FILE_METADATA_CHANGED)
+	if (change == FILE_METADATA_CHANGED)
 	{
 		// might switch to a detailed view
 		ViewController::get()->reloadGameListView(this);
@@ -42,11 +62,45 @@ void BasicGameListView::onFileChanged(FileData* file, FileChangeType change)
 void BasicGameListView::populateList(const std::vector<FileData*>& files)
 {
 	mList.clear();
-	mHeaderText.setText(mRoot->getSystem()->getFullName());
+
+	std::string systemName = mRoot->getSystem()->getFullName();
+	mHeaderText.setText(systemName);
+
+	bool favoritesFirst = Settings::getInstance()->getBool("FavoritesFirst");
+	bool showFavoriteIcon = (systemName != "favorites");
+	if (!showFavoriteIcon)
+		favoritesFirst = false;
+
 	if (files.size() > 0)
 	{
-		for(auto it = files.cbegin(); it != files.cend(); it++)
+		if (favoritesFirst)
 		{
+			for (auto it = files.cbegin(); it != files.cend(); it++)
+			{
+				if (!(*it)->getFavorite())
+					continue;
+				
+				if (showFavoriteIcon)
+					mList.add(_U("\uF006 ") + (*it)->getName(), *it, ((*it)->getType() == FOLDER));
+				else
+					mList.add((*it)->getName(), *it, ((*it)->getType() == FOLDER));				
+			}
+		}
+
+		for (auto it = files.cbegin(); it != files.cend(); it++)
+		{
+			if ((*it)->getFavorite())
+			{
+				if (favoritesFirst)
+					continue;
+
+				if (showFavoriteIcon)
+				{
+					mList.add(_U("\uF006 ") + (*it)->getName(), *it, ((*it)->getType() == FOLDER));
+					continue;
+				}
+			}
+				
 			mList.add((*it)->getName(), *it, ((*it)->getType() == FOLDER));
 		}
 	}
@@ -58,6 +112,9 @@ void BasicGameListView::populateList(const std::vector<FileData*>& files)
 
 FileData* BasicGameListView::getCursor()
 {
+	if (mList.size() == 0)
+		return nullptr;
+
 	return mList.getSelected();
 }
 
@@ -93,7 +150,7 @@ void BasicGameListView::setCursor(FileData* cursor)
 void BasicGameListView::addPlaceholder()
 {
 	// empty list - add a placeholder
-	FileData* placeholder = new FileData(PLACEHOLDER, "<No Entries Found>", this->mRoot->getSystem()->getSystemEnvData(), this->mRoot->getSystem());
+	FileData* placeholder = new FileData(PLACEHOLDER, "<No Entries Found>", this->mRoot->getSystem());
 	mList.add(placeholder->getName(), placeholder, (placeholder->getType() == PLACEHOLDER));
 }
 
@@ -116,7 +173,8 @@ void BasicGameListView::remove(FileData *game, bool deleteFile)
 {
 	if (deleteFile)
 		Utils::FileSystem::removeFile(game->getPath());  // actually delete the file on the filesystem
-	FileData* parent = game->getParent();
+
+	FolderData* parent = game->getParent();
 	if (getCursor() == game)                     // Select next element in list, or prev if none
 	{
 		std::vector<FileData*> siblings = parent->getChildrenListToDisplay();
@@ -146,17 +204,24 @@ std::vector<HelpPrompt> BasicGameListView::getHelpPrompts()
 	std::vector<HelpPrompt> prompts;
 
 	if(Settings::getInstance()->getBool("QuickSystemSelect"))
-		prompts.push_back(HelpPrompt("left/right", "system"));
-	prompts.push_back(HelpPrompt("up/down", "choose"));
-	prompts.push_back(HelpPrompt("a", "launch"));
-	prompts.push_back(HelpPrompt("b", "back"));
+		prompts.push_back(HelpPrompt("left/right", _T("SYSTEM")));
+
+	prompts.push_back(HelpPrompt("up/down", _T("CHOOSE")));
+	prompts.push_back(HelpPrompt("a", _T("LAUNCH")));
+	prompts.push_back(HelpPrompt("b", _T("BACK")));
+
 	if(!UIModeController::getInstance()->isUIModeKid())
-		prompts.push_back(HelpPrompt("select", "options"));
+		prompts.push_back(HelpPrompt("select", _T("options")));
+	
 	if(mRoot->getSystem()->isGameSystem())
-		prompts.push_back(HelpPrompt("x", "random"));
-	if(mRoot->getSystem()->isGameSystem() && UIModeController::getInstance()->isUIModeFull())
+		prompts.push_back(HelpPrompt("x", _T("RANDOM")));
+
+	if(mRoot->getSystem()->isGameSystem() && !UIModeController::getInstance()->isUIModeKid())
 	{
 		std::string prompt = CollectionSystemManager::get()->getEditingCollection();
+		if (prompt == "Favorites")
+			prompt = "FAVORIS";
+
 		prompts.push_back(HelpPrompt("y", prompt));
 	}
 	return prompts;

@@ -25,17 +25,47 @@
 #include <Windows.h>
 #endif
 
+#include "resources/TextureData.h"
 #include <FreeImage.h>
+#include "AudioManager.h"
 
 bool scrape_cmdline = false;
 
 bool parseArgs(int argc, char* argv[])
 {
+	for (int i = 1; i < argc; i++)
+	{
+		if (strcmp(argv[i], "--home") == 0)
+		{
+			if (i == argc - 1)
+				continue;
+
+			std::string arg = argv[i + 1];
+			if (arg.find("-") == 0)
+				continue;
+
+			Utils::FileSystem::setHomePath(argv[i + 1]);
+			i++; // skip vsync value			
+		}
+	}
+
 	Settings::getInstance()->setString("ExePath", argv[0]);
 
 	for(int i = 1; i < argc; i++)
 	{
-		if(strcmp(argv[i], "--resolution") == 0)
+		if (strcmp(argv[i], "--monitor") == 0)
+		{
+			if (i >= argc - 1)
+			{
+				std::cerr << "Invalid monitor supplied.";
+				return false;
+			}
+
+			int monitorId = atoi(argv[i + 1]);		
+			i++; // skip the argument value
+			Settings::getInstance()->setInt("MonitorID", monitorId);
+		}
+		else if (strcmp(argv[i], "--resolution") == 0)
 		{
 			if(i >= argc - 2)
 			{
@@ -48,9 +78,10 @@ bool parseArgs(int argc, char* argv[])
 			i += 2; // skip the argument value
 			Settings::getInstance()->setInt("WindowWidth", width);
 			Settings::getInstance()->setInt("WindowHeight", height);
-		}else if(strcmp(argv[i], "--screensize") == 0)
+		}
+		else if (strcmp(argv[i], "--screensize") == 0)
 		{
-			if(i >= argc - 2)
+			if (i >= argc - 2)
 			{
 				std::cerr << "Invalid screensize supplied.";
 				return false;
@@ -61,7 +92,8 @@ bool parseArgs(int argc, char* argv[])
 			i += 2; // skip the argument value
 			Settings::getInstance()->setInt("ScreenWidth", width);
 			Settings::getInstance()->setInt("ScreenHeight", height);
-		}else if(strcmp(argv[i], "--screenoffset") == 0)
+		}
+		else if (strcmp(argv[i], "--screenoffset") == 0)
 		{
 			if(i >= argc - 2)
 			{
@@ -74,7 +106,8 @@ bool parseArgs(int argc, char* argv[])
 			i += 2; // skip the argument value
 			Settings::getInstance()->setInt("ScreenOffsetX", x);
 			Settings::getInstance()->setInt("ScreenOffsetY", y);
-		}else if (strcmp(argv[i], "--screenrotate") == 0)
+		}
+		else if (strcmp(argv[i], "--screenrotate") == 0)
 		{
 			if (i >= argc - 1)
 			{
@@ -85,41 +118,74 @@ bool parseArgs(int argc, char* argv[])
 			int rotate = atoi(argv[i + 1]);
 			++i; // skip the argument value
 			Settings::getInstance()->setInt("ScreenRotate", rotate);
-		}else if(strcmp(argv[i], "--gamelist-only") == 0)
+		}
+		else if (strcmp(argv[i], "--gamelist-only") == 0)
 		{
 			Settings::getInstance()->setBool("ParseGamelistOnly", true);
-		}else if(strcmp(argv[i], "--ignore-gamelist") == 0)
+		}
+		else if (strcmp(argv[i], "--ignore-gamelist") == 0)
 		{
 			Settings::getInstance()->setBool("IgnoreGamelist", true);
-		}else if(strcmp(argv[i], "--show-hidden-files") == 0)
+		}
+		else if (strcmp(argv[i], "--show-hidden-files") == 0)
 		{
 			Settings::getInstance()->setBool("ShowHiddenFiles", true);
-		}else if(strcmp(argv[i], "--draw-framerate") == 0)
+		}
+		else if (strcmp(argv[i], "--draw-framerate") == 0)
 		{
 			Settings::getInstance()->setBool("DrawFramerate", true);
-		}else if(strcmp(argv[i], "--no-exit") == 0)
+		}
+		else if (strcmp(argv[i], "--no-exit") == 0)
 		{
 			Settings::getInstance()->setBool("ShowExit", false);
-		}else if(strcmp(argv[i], "--no-splash") == 0)
+		}
+		else if (strcmp(argv[i], "--no-splash") == 0)
 		{
 			Settings::getInstance()->setBool("SplashScreen", false);
-		}else if(strcmp(argv[i], "--debug") == 0)
+		}
+		else if (strcmp(argv[i], "--debug") == 0)
 		{
 			Settings::getInstance()->setBool("Debug", true);
 			Settings::getInstance()->setBool("HideConsole", false);
 			Log::setReportingLevel(LogDebug);
-		}else if(strcmp(argv[i], "--windowed") == 0)
+		}
+		else if (strcmp(argv[i], "--fullscreen-borderless") == 0)
+		{
+			Settings::getInstance()->setBool("FullscreenBorderless", true);
+		}
+		else if (strcmp(argv[i], "--fullscreen") == 0)
+		{
+			Settings::getInstance()->setBool("FullscreenBorderless", false);
+		}
+		else if (strcmp(argv[i], "--windowed") == 0 || strcmp(argv[i], "-windowed") == 0)
 		{
 			Settings::getInstance()->setBool("Windowed", true);
-		}else if(strcmp(argv[i], "--vsync") == 0)
-		{
-			bool vsync = (strcmp(argv[i + 1], "on") == 0 || strcmp(argv[i + 1], "1") == 0) ? true : false;
+		}
+		else if (strcmp(argv[i], "--vsync") == 0 || strcmp(argv[i], "-vsync") == 0)
+		{			
+			bool vsync = false;
+			if (i == argc - 1)
+				vsync = true;
+			else
+			{
+				std::string arg = argv[i + 1];
+				if (arg.find("-") == 0)
+					vsync = true;
+				else
+				{
+					vsync = (strcmp(argv[i + 1], "on") == 0 || strcmp(argv[i + 1], "1") == 0) ? true : false;
+					i++; // skip vsync value
+				}
+			}
+
 			Settings::getInstance()->setBool("VSync", vsync);
-			i++; // skip vsync value
-		}else if(strcmp(argv[i], "--scrape") == 0)
+			
+		}
+		else if (strcmp(argv[i], "--scrape") == 0)
 		{
 			scrape_cmdline = true;
-		}else if(strcmp(argv[i], "--max-vram") == 0)
+		}
+		else if (strcmp(argv[i], "--max-vram") == 0)
 		{
 			int maxVRAM = atoi(argv[i + 1]);
 			Settings::getInstance()->setInt("MaxVRAM", maxVRAM);
@@ -194,25 +260,29 @@ bool verifyHomeFolderExists()
 }
 
 // Returns true if everything is OK,
-bool loadSystemConfigFile(const char** errorString)
+bool loadSystemConfigFile(Window* window, const char** errorString)
 {
 	*errorString = NULL;
-
-	if(!SystemData::loadConfig())
+	
+	if (!SystemData::loadConfig(window))
 	{
 		LOG(LogError) << "Error while parsing systems configuration file!";
+
 		*errorString = "IT LOOKS LIKE YOUR SYSTEMS CONFIGURATION FILE HAS NOT BEEN SET UP OR IS INVALID. YOU'LL NEED TO DO THIS BY HAND, UNFORTUNATELY.\n\n"
 			"VISIT EMULATIONSTATION.ORG FOR MORE INFORMATION.";
+
 		return false;
 	}
 
 	if(SystemData::sSystemVector.size() == 0)
 	{
 		LOG(LogError) << "No systems found! Does at least one system have a game present? (check that extensions match!)\n(Also, make sure you've updated your es_systems.cfg for XML!)";
+
 		*errorString = "WE CAN'T FIND ANY SYSTEMS!\n"
 			"CHECK THAT YOUR PATHS ARE CORRECT IN THE SYSTEMS CONFIGURATION FILE, "
 			"AND YOUR GAME DIRECTORY HAS AT LEAST ONE GAME WITH THE CORRECT EXTENSION.\n\n"
 			"VISIT EMULATIONSTATION.ORG FOR MORE INFORMATION.";
+
 		return false;
 	}
 
@@ -229,7 +299,11 @@ int main(int argc, char* argv[])
 {
 	srand((unsigned int)time(NULL));
 
+#if WIN32
+	std::locale::global(std::locale("en-US"));
+#else
 	std::locale::global(std::locale("C"));
+#endif
 
 	if(!parseArgs(argc, argv))
 		return 0;
@@ -292,9 +366,15 @@ int main(int argc, char* argv[])
 	MameNames::init();
 	window.pushGui(ViewController::get());
 
-	if(!scrape_cmdline)
+	TextureData::OPTIMIZEVRAM = Settings::getInstance()->getBool("OptimizeVRAM");
+	GuiComponent::ALLOWANIMATIONS = Settings::getInstance()->getString("TransitionStyle") != "instant";
+
+	bool splashScreen = Settings::getInstance()->getBool("SplashScreen");
+	bool splashScreenProgress = Settings::getInstance()->getBool("SplashScreenProgress");
+
+	if (!scrape_cmdline)
 	{
-		if(!window.init())
+		if(!window.init(true))
 		{
 			LOG(LogError) << "Window failed to initialize!";
 			return 1;
@@ -303,26 +383,29 @@ int main(int argc, char* argv[])
 		std::string glExts = (const char*)glGetString(GL_EXTENSIONS);
 		LOG(LogInfo) << "Checking available OpenGL extensions...";
 		LOG(LogInfo) << " ARB_texture_non_power_of_two: " << (glExts.find("ARB_texture_non_power_of_two") != std::string::npos ? "ok" : "MISSING");
-		if(Settings::getInstance()->getBool("SplashScreen"))
-			window.renderLoadingScreen();
+
+		if (splashScreen)
+			window.renderLoadingScreen(_T("Loading..."));
 	}
 
 	const char* errorMsg = NULL;
-	if(!loadSystemConfigFile(&errorMsg))
+	if(!loadSystemConfigFile(&window, &errorMsg))
 	{
 		// something went terribly wrong
-		if(errorMsg == NULL)
+		if (errorMsg == NULL)
 		{
 			LOG(LogError) << "Unknown error occured while parsing system config file.";
-			if(!scrape_cmdline)
+
+			if (!scrape_cmdline)
 				Renderer::deinit();
+
 			return 1;
 		}
 
 		// we can't handle es_systems.cfg file problems inside ES itself, so display the error message then quit
 		window.pushGui(new GuiMsgBox(&window,
 			errorMsg,
-			"QUIT", [] {
+			_T("QUIT"), [] {
 				SDL_Event* quit = new SDL_Event();
 				quit->type = SDL_QUIT;
 				SDL_PushEvent(quit);
@@ -330,31 +413,53 @@ int main(int argc, char* argv[])
 	}
 
 	//run the command line scraper then quit
-	if(scrape_cmdline)
-	{
+	if (scrape_cmdline)
 		return run_scraper_cmdline();
-	}
 
 	//dont generate joystick events while we're loading (hopefully fixes "automatically started emulator" bug)
 	SDL_JoystickEventState(SDL_DISABLE);
 
 	// preload what we can right away instead of waiting for the user to select it
 	// this makes for no delays when accessing content, but a longer startup time
-	ViewController::get()->preload();
+
+	if (Settings::getInstance()->getBool("PreloadUI"))
+		ViewController::get()->preload();
+	
+	if (splashScreen && splashScreenProgress)	
+		window.renderLoadingScreen(_T("Starting UI"));
 
 	//choose which GUI to open depending on if an input configuration already exists
-	if(errorMsg == NULL)
+	if (errorMsg == NULL)
 	{
-		if(Utils::FileSystem::exists(InputManager::getConfigPath()) && InputManager::getInstance()->getNumConfiguredDevices() > 0)
-		{
-			ViewController::get()->goToStart();
-		}else{
-			window.pushGui(new GuiDetectDevice(&window, true, [] { ViewController::get()->goToStart(); }));
-		}
+		if (Utils::FileSystem::exists(InputManager::getConfigPath()) && InputManager::getInstance()->getNumConfiguredDevices() > 0)
+			ViewController::get()->goToStart(true);
+		else
+			window.pushGui(new GuiDetectDevice(&window, true, [] { ViewController::get()->goToStart(true); }));		
 	}
 
 	//generate joystick events since we're done loading
 	SDL_JoystickEventState(SDL_ENABLE);
+
+	window.endRenderLoadingScreen();
+
+	if (Settings::getInstance()->getBool("audio.bgmusic"))
+		AudioManager::getInstance()->playRandomMusic();
+
+#ifdef WIN32	
+	DWORD displayFrequency = 60;
+
+	DEVMODE lpDevMode;
+	memset(&lpDevMode, 0, sizeof(DEVMODE));
+	lpDevMode.dmSize = sizeof(DEVMODE);
+	lpDevMode.dmFields = DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFLAGS | DM_DISPLAYFREQUENCY;
+	lpDevMode.dmDriverExtra = 0;
+
+	if (EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &lpDevMode) != 0) {
+		displayFrequency = lpDevMode.dmDisplayFrequency; // default value if cannot retrieve from user settings.
+	}
+	
+	int timeLimit = (1000 / displayFrequency) - 6;	 // Margin for vsync
+#endif
 
 	int lastTime = SDL_GetTicks();
 	int ps_time = SDL_GetTicks();
@@ -363,18 +468,21 @@ int main(int argc, char* argv[])
 
 	while(running)
 	{
+		int processStart = SDL_GetTicks();
+
 		SDL_Event event;
 		bool ps_standby = PowerSaver::getState() && (int) SDL_GetTicks() - ps_time > PowerSaver::getMode();
 
-		if(ps_standby ? SDL_WaitEventTimeout(&event, PowerSaver::getTimeout()) : SDL_PollEvent(&event))
+		if (ps_standby ? SDL_WaitEventTimeout(&event, PowerSaver::getTimeout()) : SDL_PollEvent(&event))
 		{
 			do
 			{
 				InputManager::getInstance()->parseEvent(event, &window);
 
-				if(event.type == SDL_QUIT)
+				if (event.type == SDL_QUIT)
 					running = false;
-			} while(SDL_PollEvent(&event));
+			} 
+			while(SDL_PollEvent(&event));
 
 			// triggered if exiting from SDL_WaitEvent due to event
 			if (ps_standby)
@@ -388,13 +496,13 @@ int main(int argc, char* argv[])
 		{
 			// If exitting SDL_WaitEventTimeout due to timeout. Trail considering
 			// timeout as an event
-			ps_time = SDL_GetTicks();
+			ps_time = SDL_GetTicks();			
 		}
 
-		if(window.isSleeping())
+		if (window.isSleeping())
 		{
 			lastTime = SDL_GetTicks();
-			SDL_Delay(1); // this doesn't need to be accurate, we're just giving up our CPU time until something wakes us up
+			SDL_Delay(10); // this doesn't need to be accurate, we're just giving up our CPU time until something wakes us up
 			continue;
 		}
 
@@ -403,19 +511,43 @@ int main(int argc, char* argv[])
 		lastTime = curTime;
 
 		// cap deltaTime if it ever goes negative
-		if(deltaTime < 0)
+		if (deltaTime < 0)
 			deltaTime = 1000;
 
 		window.update(deltaTime);
 		window.render();
-		Renderer::swapBuffers();
-
+		
 		Log::flush();
+
+		int processDuration = SDL_GetTicks() - processStart;
+		
+#ifdef WIN32		
+		if (processDuration < timeLimit)
+		{
+			int timeToWait = timeLimit - processDuration;
+			if (timeToWait > 0 && timeToWait < 100)
+				Sleep(timeToWait);
+		}
+
+		int swapStart = SDL_GetTicks();
+#endif
+
+		Renderer::swapBuffers();				
+/*
+#ifdef WIN32	
+		int swapDuration = SDL_GetTicks() - swapStart;
+		
+		char buffer[100];
+		sprintf_s(buffer, "px=%d swap=%d, sleep=%d\n", processDuration, swapDuration, timeLimit - processDuration);
+		OutputDebugStringA(buffer);
+#endif
+*/
 	}
 
 	while(window.peekGui() != ViewController::get())
 		delete window.peekGui();
-	window.deinit();
+
+	window.deinit(true);
 
 	MameNames::deinit();
 	CollectionSystemManager::deinit();

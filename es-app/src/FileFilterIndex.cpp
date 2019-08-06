@@ -248,7 +248,7 @@ void FileFilterIndex::resetFilters()
 void FileFilterIndex::setUIModeFilters()
 {
 	if(!Settings::getInstance()->getBool("ForceDisableFilters")){
-		if (!UIModeController::getInstance()->isUIModeFull())
+		if (UIModeController::getInstance()->isUIModeKiosk())
 		{
 			filterByHidden = true;
 			std::vector<std::string> val = { "FALSE" };
@@ -259,7 +259,7 @@ void FileFilterIndex::setUIModeFilters()
 			filterByKidGame = true;
 			std::vector<std::string> val = { "TRUE" };
 			setFilter(KIDGAME_FILTER, &val);
-		}		
+		}
 	}
 }
 
@@ -297,8 +297,9 @@ bool FileFilterIndex::showFile(FileData* game)
 
 	// if folder, needs further inspection - i.e. see if folder contains at least one element
 	// that should be shown
-	if (game->getType() == FOLDER) {
-		std::vector<FileData*> children = game->getChildren();
+	if (game->getType() == FOLDER) 
+	{
+		std::vector<FileData*> children = ((FolderData*) game)->getChildren();
 		// iterate through all of the children, until there's a match
 
 		for (std::vector<FileData*>::const_iterator it = children.cbegin(); it != children.cend(); ++it ) {

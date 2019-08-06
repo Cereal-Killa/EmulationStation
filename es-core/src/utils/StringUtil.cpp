@@ -3,10 +3,56 @@
 #include <algorithm>
 #include <stdarg.h>
 
+#if defined(_WIN32)
+#include <Windows.h>
+#endif
+
 namespace Utils
 {
 	namespace String
 	{
+#if defined(_WIN32)
+		const std::string convertFromWideString(const std::wstring wstring)
+		{
+			int numBytes = WideCharToMultiByte(CP_UTF8, 0, wstring.c_str(), (int)wstring.length(), nullptr, 0, nullptr, nullptr);
+
+			std::string string;
+			string.resize(numBytes);
+			WideCharToMultiByte(CP_UTF8, 0, wstring.c_str(), (int)wstring.length(), (char*)string.c_str(), numBytes, nullptr, nullptr);
+
+			return string;
+		}
+	
+		const std::wstring convertToWideString(const std::string string)
+		{
+			int numBytes = MultiByteToWideChar(CP_UTF8, 0, string.c_str(), (int)string.length(), nullptr, 0);
+
+			std::wstring wstring;
+			wstring.resize(numBytes);
+			MultiByteToWideChar(CP_UTF8, 0, string.c_str(), (int)string.length(), (WCHAR*)wstring.c_str(), numBytes);
+
+			return wstring;
+		}
+#endif
+		std::vector<std::string> split(const std::string& s, char seperator)
+		{
+			std::vector<std::string> output;
+
+			std::string::size_type prev_pos = 0, pos = 0;
+			while ((pos = s.find(seperator, pos)) != std::string::npos)
+			{
+				std::string substring(s.substr(prev_pos, pos - prev_pos));
+
+				output.push_back(substring);
+
+				prev_pos = ++pos;
+			}
+
+			output.push_back(s.substr(prev_pos, pos - prev_pos)); // Last word
+
+			return output;
+		}
+
 		unsigned int chars2Unicode(const std::string& _string, size_t& _cursor)
 		{
 			const char&  c      = _string[_cursor];
@@ -148,13 +194,22 @@ namespace Utils
 
 		std::string toUpper(const std::string& _string)
 		{
+		
+#if defined(_WIN32)
+			std::wstring stringW = convertToWideString(_string);
+
+			auto& f = std::use_facet<std::ctype<wchar_t>>(std::locale());
+			f.toupper(&stringW[0], &stringW[0] + stringW.size());
+
+			return convertFromWideString(stringW);
+#else
 			std::string string;
 
 			for(size_t i = 0; i < _string.length(); ++i)
 				string += (char)toupper(_string[i]);
 
 			return string;
-
+#endif
 		} // toUpper
 
 		std::string trim(const std::string& _string)
@@ -279,6 +334,20 @@ namespace Utils
 			return out;
 
 		} // format
+
+		// Simple XOR scrambling of a string, with an accompanying key
+		std::string scramble(const std::string& _input, const std::string& key)
+		{
+			std::string buffer = _input;
+
+			for (size_t i = 0; i < _input.size(); ++i) 
+			{               
+				buffer[i] = _input[i] ^ key[i];
+			}
+
+			return buffer;
+
+		} // scramble	
 
 	} // String::
 

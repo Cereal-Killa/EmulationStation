@@ -5,9 +5,19 @@
 
 SwitchComponent::SwitchComponent(Window* window, bool state) : GuiComponent(window), mImage(window), mState(state)
 {
-	mImage.setImage(":/off.svg");
-	mImage.setResize(0, Font::get(FONT_SIZE_MEDIUM)->getLetterHeight());
+	auto menuTheme = ThemeData::getMenuTheme();
+
+	float height = Font::get(FONT_SIZE_MEDIUM)->getLetterHeight();	
+
+	mImage.setImage(ThemeData::getMenuTheme()->Icons.off);
+	mImage.setResize(0, height);
+	mImage.setColorShift(menuTheme->Text.color);
+
 	mSize = mImage.getSize();
+}
+
+void SwitchComponent::setColor(unsigned int color) {
+	mImage.setColorShift(color);
 }
 
 void SwitchComponent::onSizeChanged()
@@ -66,12 +76,13 @@ void SwitchComponent::setValue(const std::string& statestring)
 
 void SwitchComponent::onStateChanged()
 {
-	mImage.setImage(mState ? ":/on.svg" : ":/off.svg");
+	auto theme = ThemeData::getMenuTheme();
+	mImage.setImage(mState ? theme->Icons.on : theme->Icons.off);
 }
 
 std::vector<HelpPrompt> SwitchComponent::getHelpPrompts()
 {
 	std::vector<HelpPrompt> prompts;
-	prompts.push_back(HelpPrompt("a", "change"));
+	prompts.push_back(HelpPrompt("a", "MODIFIER"));
 	return prompts;
 }

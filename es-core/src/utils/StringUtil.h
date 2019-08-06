@@ -25,8 +25,14 @@ namespace Utils
 		std::string  removeParenthesis  (const std::string& _string);
 		stringVector commaStringToVector(const std::string& _string);
 		std::string  vectorToCommaString(stringVector _vector);
-		std::string  format             (const char* _string, ...);
+		std::string  format             (const char* _string, ...);      
+		std::string  scramble           (const std::string& _input, const std::string& key);
+		std::vector<std::string> split	(const std::string& s, char seperator);	
 
+#if defined(_WIN32)
+		const std::string convertFromWideString(const std::wstring wstring);
+		const std::wstring convertToWideString(const std::string string);
+#endif
 	} // String::
 
 } // Utils::

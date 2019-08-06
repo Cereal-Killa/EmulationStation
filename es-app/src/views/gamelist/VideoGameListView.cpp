@@ -11,11 +11,11 @@
 #include "Settings.h"
 #endif
 
-VideoGameListView::VideoGameListView(Window* window, FileData* root) :
+VideoGameListView::VideoGameListView(Window* window, FolderData* root) :
 	BasicGameListView(window, root),
 	mDescContainer(window), mDescription(window),
 	mMarquee(window),
-	mImage(window),
+	mImage(window, true),
 	mVideo(nullptr),
 	mVideoPlaying(false),
 
@@ -33,9 +33,9 @@ VideoGameListView::VideoGameListView(Window* window, FileData* root) :
 	if (Settings::getInstance()->getBool("VideoOmxPlayer"))
 		mVideo = new VideoPlayerComponent(window, "");
 	else
-		mVideo = new VideoVlcComponent(window, getTitlePath());
+		mVideo = new VideoVlcComponent(window, "");
 #else
-	mVideo = new VideoVlcComponent(window, getTitlePath());
+	mVideo = new VideoVlcComponent(window, "");
 #endif
 
 	mList.setPosition(mSize.x() * (0.50f + padding), mList.getPosition().y());
@@ -62,7 +62,7 @@ VideoGameListView::VideoGameListView(Window* window, FileData* root) :
 	mVideo->setOrigin(0.5f, 0.5f);
 	mVideo->setPosition(mSize.x() * 0.25f, mSize.y() * 0.4f);
 	mVideo->setSize(mSize.x() * (0.5f - 2*padding), mSize.y() * 0.4f);
-	mVideo->setDefaultZIndex(30);
+	mVideo->setDefaultZIndex(31);
 	addChild(mVideo);
 
 	// metadata labels + values
@@ -86,7 +86,7 @@ VideoGameListView::VideoGameListView(Window* window, FileData* root) :
 	addChild(&mPlayers);
 	mLblLastPlayed.setText("Last played: ");
 	addChild(&mLblLastPlayed);
-	mLastPlayed.setDisplayMode(DateTimeComponent::DISP_RELATIVE_TO_NOW);
+	mLastPlayed.setDisplayRelative(true);
 	addChild(&mLastPlayed);
 	mLblPlayCount.setText("Times played: ");
 	addChild(&mLblPlayCount);
@@ -252,9 +252,9 @@ void VideoGameListView::updateInfoPanel()
 		}
 		mVideoPlaying = true;
 
-		mVideo->setImage(file->getThumbnailPath());
-		mMarquee.setImage(file->getMarqueePath());
-		mImage.setImage(file->getImagePath());
+		mVideo->setImage(file->getThumbnailPath(), false, mVideo->getTargetSize());
+		mMarquee.setImage(file->getMarqueePath(), false, mMarquee.getSize());
+		mImage.setImage(file->getImagePath(), false, mImage.getSize());
 
 		mDescription.setText(file->metadata.get("desc"));
 		mDescContainer.reset();

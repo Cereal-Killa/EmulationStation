@@ -20,8 +20,9 @@ enum CarouselType : unsigned int
 };
 
 struct SystemViewData
-{
+{	
 	std::shared_ptr<GuiComponent> logo;
+	bool logoIsImage;
 	std::vector<GuiComponent*> backgroundExtras;
 };
 
@@ -36,8 +37,11 @@ struct SystemViewCarousel
 	Vector2f logoRotationOrigin;
 	Alignment logoAlignment;
 	unsigned int color;
+	unsigned int colorGradient;	
+	bool colorGradientHorz;
 	int maxLogoCount; // number of logos shown on the carousel
 	Vector2f logoSize;
+	Vector2f logoPos;
 	float zIndex;
 };
 
@@ -59,11 +63,19 @@ public:
 
 	std::vector<HelpPrompt> getHelpPrompts() override;
 	virtual HelpStyle getHelpStyle() override;
+	void onSizeChanged() override;
 
 protected:
 	void onCursorChanged(const CursorState& state) override;
 
 private:
+	Vector2f carouselLogoPos();
+	Vector2f carouselLogoSize();
+	Vector2f carouselPos();
+	Vector2f carouselSize();
+
+	
+
 	void populate();
 	void getViewElements(const std::shared_ptr<ThemeData>& theme);
 	void getDefaultElements(void);
@@ -75,8 +87,9 @@ private:
 	void renderFade(const Transform4x4f& trans);
 
 
-	SystemViewCarousel mCarousel;
-	TextComponent mSystemInfo;
+	SystemViewCarousel	mCarousel;
+	TextComponent		mSystemInfo;
+	SystemData*			mLastSystem;
 
 	// unit is list index
 	float mCamOffset;

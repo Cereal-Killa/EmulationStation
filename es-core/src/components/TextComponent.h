@@ -4,6 +4,7 @@
 
 #include "resources/Font.h"
 #include "GuiComponent.h"
+#include "math/Vector4f.h"
 
 class ThemeData;
 
@@ -22,8 +23,10 @@ public:
 	void setFont(const std::shared_ptr<Font>& font);
 	void setUppercase(bool uppercase);
 	void onSizeChanged() override;
+
+	std::string getText() { return mText; }
 	void setText(const std::string& text);
-	void setColor(unsigned int color);
+	virtual void setColor(unsigned int color);
 	void setHorizontalAlignment(Alignment align);
 	void setVerticalAlignment(Alignment align);
 	void setLineSpacing(float spacing);
@@ -37,15 +40,25 @@ public:
 
 	unsigned char getOpacity() const override;
 	void setOpacity(unsigned char opacity) override;
-	
+
 	inline std::shared_ptr<Font> getFont() const { return mFont; }
 
 	virtual void applyTheme(const std::shared_ptr<ThemeData>& theme, const std::string& view, const std::string& element, unsigned int properties) override;
 
+	void setGlowColor(unsigned int color) { mGlowColor = color; };
+	void setGlowSize(unsigned int size) { mGlowSize = size; };
+	
+	void setFont(std::string path, int size);
+
+protected:
+	virtual void onTextChanged();
+
+	std::string mText;
+	std::shared_ptr<Font> mFont;
+
 private:
 	void calculateExtent();
 
-	void onTextChanged();
 	void onColorChanged();
 
 	unsigned int mColor;
@@ -54,14 +67,16 @@ private:
 	unsigned char mBgColorOpacity;
 	bool mRenderBackground;
 
-	std::shared_ptr<Font> mFont;
 	bool mUppercase;
 	Vector2i mAutoCalcExtent;
-	std::string mText;
 	std::shared_ptr<TextCache> mTextCache;
 	Alignment mHorizontalAlignment;
 	Alignment mVerticalAlignment;
 	float mLineSpacing;
+
+	unsigned int mGlowColor;
+	unsigned int mGlowSize;
+	Vector4f	mPadding;
 };
 
 #endif // ES_CORE_COMPONENTS_TEXT_COMPONENT_H

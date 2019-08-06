@@ -16,6 +16,8 @@ class ImageComponent;
 class InputConfig;
 class TextCache;
 class Transform4x4f;
+class TextureResource;
+
 struct HelpStyle;
 
 class Window
@@ -32,6 +34,7 @@ public:
 		virtual bool isScreenSaverActive() = 0;
 		virtual FileData* getCurrentGame() = 0;
 		virtual void launchGame() = 0;
+		virtual void resetCounts() = 0;
 	};
 
 	class InfoPopup {
@@ -54,8 +57,8 @@ public:
 	void update(int deltaTime);
 	void render();
 
-	bool init();
-	void deinit();
+	bool init(bool initRenderer);
+	void deinit(bool deinitRenderer);
 
 	void normalizeNextUpdate();
 
@@ -63,7 +66,11 @@ public:
 	bool getAllowSleep();
 	void setAllowSleep(bool sleep);
 
-	void renderLoadingScreen();
+	void endRenderLoadingScreen();
+	void renderLoadingScreen(std::string text, float percent = -1, unsigned char opacity = 255);
+	void renderGameLoadingScreen(float opacity=1, bool swapBuffers=true);
+
+	void loadCustomImageLoadingScreen(std::string imagePath, std::string customText);
 
 	void renderHelpPromptsEarly(); // used to render HelpPrompts before a fade
 	void setHelpPrompts(const std::vector<HelpPrompt>& prompts, const HelpStyle& style);
@@ -73,7 +80,7 @@ public:
 	inline void stopInfoPopup() { if (mInfoPopup) mInfoPopup->stop(); };
 
 	void startScreenSaver();
-	void cancelScreenSaver();
+	bool cancelScreenSaver();
 	void renderScreenSaver();
 
 private:
@@ -82,12 +89,15 @@ private:
 
 	// Returns true if at least one component on the stack is processing
 	bool isProcessing();
-	
+
 	HelpComponent* mHelp;
 	ImageComponent* mBackgroundOverlay;
 	ScreenSaver*	mScreenSaver;
 	InfoPopup*		mInfoPopup;
 	bool			mRenderScreenSaver;
+
+	std::shared_ptr<TextureResource> mSplash;
+	std::string						 mCustomSplash;
 
 	std::vector<GuiComponent*> mGuiStack;
 

@@ -7,7 +7,7 @@
 #include "Sound.h"
 #include "SystemData.h"
 
-ISimpleGameListView::ISimpleGameListView(Window* window, FileData* root) : IGameListView(window, root),
+ISimpleGameListView::ISimpleGameListView(Window* window, FolderData* root) : IGameListView(window, root),
 	mHeaderText(window), mHeaderImage(window), mBackground(window)
 {
 	mHeaderText.setText("Logo Text");
@@ -78,47 +78,65 @@ void ISimpleGameListView::onFileChanged(FileData* /*file*/, FileChangeType /*cha
 
 bool ISimpleGameListView::input(InputConfig* config, Input input)
 {
-	if(input.value != 0)
+	bool hideSystemView = Settings::getInstance()->getBool("HideSystemView");
+
+	if (input.value != 0)
 	{
-		if(config->isMappedTo("a", input))
+		if (config->isMappedTo("a", input))
 		{
 			FileData* cursor = getCursor();
-			if(cursor->getType() == GAME)
+			FolderData* folder = NULL;
+
+			if (cursor->getType() == FOLDER)
+			{
+				folder = (FolderData*)cursor;
+
+				FileData* gameOfFolder = folder->findUniqueGameForFolder();
+				if (gameOfFolder != NULL)
+					cursor = gameOfFolder;
+			}
+
+			if (cursor->getType() == GAME)
 			{
 				Sound::getFromTheme(getTheme(), getName(), "launch")->play();
 				launch(cursor);
-			}else{
-				// it's a folder
-				if(cursor->getChildren().size() > 0)
+			}
+			else
+			{
+				// it's a folder ? ( or PLACEHOLDER... )
+				if(folder != nullptr && folder->getChildren().size() > 0)
 				{
 					mCursorStack.push(cursor);
-					populateList(cursor->getChildrenListToDisplay());
+					populateList(folder->getChildrenListToDisplay());
 					FileData* cursor = getCursor();
 					setCursor(cursor);
 				}
 			}
 
 			return true;
-		}else if(config->isMappedTo("b", input))
+		}
+		else if(config->isMappedTo("b", input))
 		{
-			if(mCursorStack.size())
+			if (mCursorStack.size())
 			{
 				populateList(mCursorStack.top()->getParent()->getChildren());
 				setCursor(mCursorStack.top());
 				mCursorStack.pop();
 				Sound::getFromTheme(getTheme(), getName(), "back")->play();
-			}else{
+			} 
+			else if (!hideSystemView)
+			{
 				onFocusLost();
 				SystemData* systemToView = getCursor()->getSystem();
 				if (systemToView->isCollection())
-				{
 					systemToView = CollectionSystemManager::get()->getSystemToView(systemToView);
-				}
+
 				ViewController::get()->goToSystemView(systemToView);
 			}
 
 			return true;
-		}else if(config->isMappedTo(getQuickSystemSelectRightButton(), input))
+		}
+		else if (config->isMappedLike(getQuickSystemSelectRightButton(), input) || config->isMappedLike("rightshoulder", input))
 		{
 			if(Settings::getInstance()->getBool("QuickSystemSelect"))
 			{
@@ -126,7 +144,8 @@ bool ISimpleGameListView::input(InputConfig* config, Input input)
 				ViewController::get()->goToNextGameList();
 				return true;
 			}
-		}else if(config->isMappedTo(getQuickSystemSelectLeftButton(), input))
+		}
+		else if (config->isMappedLike(getQuickSystemSelectLeftButton(), input) || config->isMappedLike("leftshoulder", input))
 		{
 			if(Settings::getInstance()->getBool("QuickSystemSelect"))
 			{
@@ -134,7 +153,8 @@ bool ISimpleGameListView::input(InputConfig* config, Input input)
 				ViewController::get()->goToPrevGameList();
 				return true;
 			}
-		}else if (config->isMappedTo("x", input))
+		}
+		else if (config->isMappedTo("x", input))
 		{
 			if (mRoot->getSystem()->isGameSystem())
 			{
@@ -146,7 +166,8 @@ bool ISimpleGameListView::input(InputConfig* config, Input input)
 				}
 				return true;
 			}
-		}else if (config->isMappedTo("y", input) && UIModeController::getInstance()->isUIModeFull())
+		}
+		else if (config->isMappedTo("y", input) && !UIModeController::getInstance()->isUIModeKid())
 		{
 			if(mRoot->getSystem()->isGameSystem())
 			{

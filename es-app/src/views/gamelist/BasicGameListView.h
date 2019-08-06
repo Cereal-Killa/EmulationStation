@@ -8,7 +8,7 @@
 class BasicGameListView : public ISimpleGameListView
 {
 public:
-	BasicGameListView(Window* window, FileData* root);
+	BasicGameListView(Window* window, FolderData* root);
 
 	// Called when a FileData* is added, has its metadata changed, or is removed
 	virtual void onFileChanged(FileData* file, FileChangeType change);
@@ -18,10 +18,19 @@ public:
 	virtual FileData* getCursor() override;
 	virtual void setCursor(FileData* file) override;
 
-	virtual const char* getName() const override { return "basic"; }
+	virtual const char* getName() const override 
+	{ 
+		if (!mCustomThemeName.empty())
+			return mCustomThemeName.c_str();
+
+		return "basic"; 
+	}
 
 	virtual std::vector<HelpPrompt> getHelpPrompts() override;
 	virtual void launch(FileData* game) override;
+
+	virtual void	setThemeName(std::string name);
+	virtual void onShow() override;
 
 protected:
 	virtual std::string getQuickSystemSelectRightButton() override;
@@ -31,6 +40,7 @@ protected:
 	virtual void addPlaceholder();
 
 	TextListComponent<FileData*> mList;
+	bool mLoaded;
 };
 
 #endif // ES_APP_VIEWS_GAME_LIST_BASIC_GAME_LIST_VIEW_H

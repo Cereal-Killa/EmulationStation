@@ -8,7 +8,7 @@
 #include "Window.h"
 #include <SDL_timer.h>
 
-#define FADE_TIME_MS	200
+#define FADE_TIME_MS	900
 
 std::string getTitlePath() {
 	std::string titleFolder = getTitleFolder();
@@ -16,8 +16,7 @@ std::string getTitlePath() {
 }
 
 std::string getTitleFolder() {
-	std::string home = Utils::FileSystem::getHomePath();
-	return home + "/.emulationstation/tmp/";
+	return Utils::FileSystem::getGenericPath(Utils::FileSystem::getHomePath()) + "/.emulationstation/tmp/";	
 }
 
 void writeSubtitle(const char* gameName, const char* systemName, bool always)
@@ -31,13 +30,15 @@ void writeSubtitle(const char* gameName, const char* systemName, bool always)
 	{
 		fprintf(file, "1\n00:00:01,000 --> 00:00:08,000\n");
 	}
+
 	fprintf(file, "%s\n", gameName);
-	fprintf(file, "<i>%s</i>\n\n", systemName);
+	fprintf(file, "<i><font color=\"#c0c0c0\">%s</font></i>\n\n", systemName);
+	//fprintf(file, "<i>%s</i>\n\n", systemName);
 
 	if (!always) {
 		if (end > 12)
 		{
-			fprintf(file, "2\n00:00:%d,000 --> 00:00:%d,000\n%s\n<i>%s</i>\n", end-4, end, gameName, systemName);
+			fprintf(file, "2\n00:00:%d,000 --> 00:00:%d,000\n%s\n<i><font color=\"#c0c0c0\">%s</font></i>\n", end-4, end, gameName, systemName);
 		}
 	}
 
@@ -53,7 +54,7 @@ void VideoComponent::setScreensaverMode(bool isScreensaver)
 
 VideoComponent::VideoComponent(Window* window) :
 	GuiComponent(window),
-	mStaticImage(window),
+	mStaticImage(window, true),
 	mVideoHeight(0),
 	mVideoWidth(0),
 	mStartDelayed(false),
@@ -65,6 +66,9 @@ VideoComponent::VideoComponent(Window* window) :
 	mTargetIsMax(false),
 	mTargetSize(0, 0)
 {
+	mFadeIn = 0.0f;
+	mIsWaitingForVideoToStart = false;
+
 	// Setup the default configuration
 	mConfig.showSnapshotDelay 		= false;
 	mConfig.showSnapshotNoVideo		= false;
@@ -94,12 +98,15 @@ void VideoComponent::onOriginChanged()
 
 void VideoComponent::onSizeChanged()
 {
-	// Update the embeded static image
+	// Update the embeded static image	
 	mStaticImage.onSizeChanged();
 }
 
 bool VideoComponent::setVideo(std::string path)
 {
+	if (path == mVideoPath)
+		return !path.empty();
+
 	// Convert the path into a generic format
 	std::string fullPath = Utils::FileSystem::getCanonicalPath(path);
 
@@ -109,6 +116,7 @@ bool VideoComponent::setVideo(std::string path)
 
 	// Store the path
 	mVideoPath = fullPath;
+	mStartDelayed = false;
 
 	// If the file exists then set the new video
 	if (!fullPath.empty() && ResourceManager::getInstance()->fileExists(fullPath))
@@ -120,13 +128,13 @@ bool VideoComponent::setVideo(std::string path)
 	return false;
 }
 
-void VideoComponent::setImage(std::string path)
+void VideoComponent::setImage(std::string path, bool tile, MaxSizeInfo maxSize)
 {
 	// Check that the image has changed
 	if (path == mStaticImagePath)
 		return;
 
-	mStaticImage.setImage(path);
+	mStaticImage.setImage(path, tile, maxSize);
 	mFadeIn = 0.0f;
 	mStaticImagePath = path;
 }
@@ -147,8 +155,17 @@ void VideoComponent::render(const Transform4x4f& parentTrans)
 {
 	Transform4x4f trans = parentTrans * getTransform();
 	GuiComponent::renderChildren(trans);
+	
+	VideoComponent::renderSnapshot(parentTrans);
 
 	Renderer::setMatrix(trans);
+
+	if (Settings::getInstance()->getBool("DebugImage"))
+	{
+		Vector2f targetSizePos = (mTargetSize - mSize) * mOrigin * -1;
+		Renderer::drawRect(targetSizePos.x(), targetSizePos.y(), mTargetSize.x(), mTargetSize.y(), 0xFF000033);
+		Renderer::drawRect(0.0f, 0.0f, mSize.x(), mSize.y(), 0x00000033);
+	}
 
 	// Handle the case where the video is delayed
 	handleStartDelay();
@@ -161,11 +178,18 @@ void VideoComponent::renderSnapshot(const Transform4x4f& parentTrans)
 {
 	// This is the case where the video is not currently being displayed. Work out
 	// if we need to display a static image
-	if ((mConfig.showSnapshotNoVideo && mVideoPath.empty()) || (mStartDelayed && mConfig.showSnapshotDelay))
-	{
-		// Display the static image instead
-		mStaticImage.setOpacity((unsigned char)(mFadeIn * 255.0f));
-		mStaticImage.render(parentTrans);
+	if ((mConfig.showSnapshotNoVideo && mVideoPath.empty()) || ((mStartDelayed || mFadeIn < 1.0) && mConfig.showSnapshotDelay))
+	{		
+		float t = 1.0 - mFadeIn;
+		t -= 1; // cubic ease out
+		t = Math::lerp(0, 1, t*t*t + 1);
+		t = (t * (float)mOpacity);
+
+		if (t == 0.0)
+			return;
+		
+		mStaticImage.setOpacity((unsigned char)t);
+		mStaticImage.render(parentTrans);		
 	}
 }
 
@@ -223,59 +247,93 @@ void VideoComponent::applyTheme(const std::shared_ptr<ThemeData>& theme, const s
 		setZIndex(elem->get<float>("zIndex"));
 	else
 		setZIndex(getDefaultZIndex());
+
+	if (elem->has("path"))
+		mVideoPath = elem->get<std::string>("path");
 }
 
 std::vector<HelpPrompt> VideoComponent::getHelpPrompts()
 {
 	std::vector<HelpPrompt> ret;
-	ret.push_back(HelpPrompt("a", "select"));
+	ret.push_back(HelpPrompt("a", "SELECTIONNER"));
 	return ret;
 }
 
-void VideoComponent::handleStartDelay()
-{
-	// Only play if any delay has timed out
-	if (mStartDelayed)
-	{
-		if (mStartTime > SDL_GetTicks())
-		{
-			// Timeout not yet completed
-			return;
-		}
-		// Completed
-		mStartDelayed = false;
-		// Clear the playing flag so startVideo works
-		mIsPlaying = false;
-		startVideo();
-	}
-}
 
 void VideoComponent::handleLooping()
 {
 }
 
+void VideoComponent::handleStartDelay()
+{
+	// Only play if any delay has timed out
+	if (!mStartDelayed || mIsWaitingForVideoToStart)
+		return;
+
+	// Timeout not yet completed
+	if (mStartTime > SDL_GetTicks())	
+		return;
+	
+	// Completed
+	mStartDelayed = false;
+	// Clear the playing flag so startVideo works
+	mIsPlaying = false;
+
+	mIsWaitingForVideoToStart = true;
+
+	startVideo();
+
+	if (mIsPlaying)
+		mIsWaitingForVideoToStart = false;
+
+//	mFadeIn = 0.0f;
+//	mIsPlaying = true;	
+}
+
+void VideoComponent::onVideoStarted()
+{
+	mIsWaitingForVideoToStart = false;
+
+	if (mConfig.startDelay == 0 || PowerSaver::getMode() == PowerSaver::INSTANT)
+	{
+		mFadeIn = 1.0f;
+		mIsPlaying = true;
+	}
+	else
+	{
+		mFadeIn = 0.0f;
+		mIsPlaying = true;
+	}
+}
+
 void VideoComponent::startVideoWithDelay()
 {
 	// If not playing then either start the video or initiate the delay
-	if (!mIsPlaying)
-	{
-		// Set the video that we are going to be playing so we don't attempt to restart it
-		mPlayingVideoPath = mVideoPath;
+	if (mIsPlaying || mStartDelayed || mIsWaitingForVideoToStart)
+		return;
+	
+	// Set the video that we are going to be playing so we don't attempt to restart it
+	mPlayingVideoPath = mVideoPath;
 
-		if (mConfig.startDelay == 0 || PowerSaver::getMode() == PowerSaver::INSTANT)
-		{
-			// No delay. Just start the video
-			mStartDelayed = false;
-			startVideo();
-		}
-		else
-		{
-			// Configure the start delay
-			mStartDelayed = true;
-			mFadeIn = 0.0f;
-			mStartTime = SDL_GetTicks() + mConfig.startDelay;
-		}
-		mIsPlaying = true;
+	if (mConfig.startDelay == 0 || PowerSaver::getMode() == PowerSaver::INSTANT)
+	{
+		// No delay. Just start the video
+		mStartDelayed = false;
+		mIsPlaying = false;
+		
+		mIsWaitingForVideoToStart = true;
+
+		startVideo();
+
+		if (mIsPlaying)
+			mIsWaitingForVideoToStart = false;
+	}
+	else
+	{
+		// Configure the start delay
+		mStartDelayed = true;
+		mFadeIn = 0.0f;
+		mStartTime = SDL_GetTicks() + mConfig.startDelay;
 	}
 }
 
@@ -283,43 +341,53 @@ void VideoComponent::update(int deltaTime)
 {
 	manageState();
 
-	// If the video start is delayed and there is less than the fade time then set the image fade
-	// accordingly
-	if (mStartDelayed)
+	if (mIsPlaying)
 	{
-		Uint32 ticks = SDL_GetTicks();
-		if (mStartTime > ticks)
+		// If the video start is delayed and there is less than the fade time then set the image fade
+		// accordingly
+		
+		if (mStartDelayed)
 		{
-			Uint32 diff = mStartTime - ticks;
-			if (diff < FADE_TIME_MS)
+			Uint32 ticks = SDL_GetTicks();
+			if (mStartTime > ticks)
 			{
-				mFadeIn = (float)diff / (float)FADE_TIME_MS;
-				return;
+				Uint32 diff = mStartTime - ticks;
+				if (diff < FADE_TIME_MS)
+				{
+					mFadeIn = (float)diff / (float)FADE_TIME_MS;
+					return;
+				}
 			}
 		}
+		
+		// If the fade in is less than 1 then increment it
+		if (mFadeIn < 1.0f)
+		{
+			mFadeIn += deltaTime / (float)FADE_TIME_MS;
+			if (mFadeIn > 1.0f)
+				mFadeIn = 1.0f;
+		}
 	}
-	// If the fade in is less than 1 then increment it
-	if (mFadeIn < 1.0f)
-	{
-		mFadeIn += deltaTime / (float)FADE_TIME_MS;
-		if (mFadeIn > 1.0f)
-			mFadeIn = 1.0f;
-	}
+
 	GuiComponent::update(deltaTime);
 }
 
 void VideoComponent::manageState()
 {
+	if (mIsWaitingForVideoToStart && mIsPlaying)
+		mIsWaitingForVideoToStart = false;
+
 	// We will only show if the component is on display and the screensaver
 	// is not active
 	bool show = mShowing && !mScreensaverActive && !mDisable;
 
 	// See if we're already playing
-	if (mIsPlaying)
+	if (mIsPlaying || mIsWaitingForVideoToStart)
 	{
 		// If we are not on display then stop the video from playing
 		if (!show)
 		{
+			mIsWaitingForVideoToStart = false;
 			stopVideo();
 		}
 		else
@@ -328,6 +396,7 @@ void VideoComponent::manageState()
 			{
 				// Path changed. Stop the video. We will start it again below because
 				// mIsPlaying will be modified by stopVideo to be false
+				mIsWaitingForVideoToStart = false;
 				stopVideo();
 			}
 		}
@@ -340,7 +409,7 @@ void VideoComponent::manageState()
 		{
 			startVideoWithDelay();
 		}
-	}
+	}	
 }
 
 void VideoComponent::onShow()

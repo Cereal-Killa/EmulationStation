@@ -1,29 +1,161 @@
-EmulationStation
-================
+EmulationStation FCAMOD
+=======================
 
-This is a fork of EmulationStation for RetroPie.
-EmulationStation is a cross-platform graphical front-end for emulators with controller navigation.
+This is a fork of EmulationStation containing many additions. 
+This has been primary developped for Windows platform, but can be compiled for Linux & Raspberry Pi.
+
+Changes in my branch
+====================
+
+**System list :** 
+- Support for Multiple Emulators/Cores in es_systems.cfg, and setting Emulator/Core per game.
+
+	```xml
+	  <command>%HOME%\RetroArch\retroarch.exe -L %HOME%\RetroArch\cores\%CORE%_libretro.dll %ROM%</command>
+	  <emulators>
+	      <emulator name="mame">
+		<cores>
+		  <core>mame2003_plus</core>
+		  <core>mame2003</core>
+		</cores>
+	      </emulator>
+	      <emulator name="fbalpha">
+		<cores>
+		  <core>fbalpha2012</core>
+		</cores>
+	      </emulator>
+	    </emulators>
+	```
+**Grid view :** 
+- Animations when size changes and during scrolling.
+- Supports having a label. 
+	```xml
+	<text name="gridtile">
+	    <color>969A9E</color>
+	    <size>1 0.18</size>
+	</text>
+	<text name="gridtile_selected">
+	    <color>F6FAFF</color>
+	</text>
+	```	
+- Layout can be defined by number of columns and rows ( you had to calculate manually the size of tiles in previous versions ). Zooming the selected item can also be defined simply.
+	```xml
+	<imagegrid name="gamegrid">
+	      <autoLayout>4 3</autoLayout>	
+	      <autoLayoutSelectedZoom>1.04</autoLayoutSelectedZoom>
+	```	 
+- Supports extended padding (top, left, bottom, right) :
+	```xml
+	<imagegrid name="gamegrid">
+	      <padding>0.03 0.13 0.03 0.08</padding>
+	```	 
+	
+- Supports video in the selected item (delay can be defined in the theme)
+	```xml
+	<imagegrid name="gamegrid">
+	      <showVideoAtDelay>700</showVideoAtDelay>      
+	```	 	
+	
+- Theme can define which image to use (image, thumbnail or marquee).
+	```xml
+	<imagegrid name="gamegrid">
+	      <imageSource>marquee</imageSource>
+	```	 
+
+- Theme can define the image sizing mode (minSize, maxSize or size). Gridtile items can define a padding.
+	```xml
+	<gridtile name="default">
+	    <padding>24 24</padding>
+	    <imageSizeMode>minSize</imageSizeMode>
+	```	 
+	
+- Supports md_image, md_video, md_name items... just like detailed view.
+- Ability to override grid size by system.
+
+**Detailed view :** 
+- Supports md_video, md_marquee items like video view did : Video view is no longer useful.
+
+**Custom views & Theming:** 	
+- Allow creation of custom views, which inherits from one of the basic theme items ( basic, detailed, grid ).
+	```xml
+	<customView name="Video grid" inherits="grid">
+	    <imagegrid name="gamegrid">
+	```	    
+- Ability to select the view (or customview) to use globally or by system.
+- The theme can force the default view to use ( attribute defaultView )
+- Fully supports Retropie & Recalbox Themes.
+- Carousel supports element "logoPos" : this allows the logo not to be inevitably centered.
+- Image loading : the image bytes where duplicated 3 times in memory.
+- In previous versions, if a xml element was unknown in the theme, nothing was loaded.
+- Support for glows around text 
+- Reflection for images ( table reflection effect )
+- Gradients for selected menu and list items.
+		    
+**Optimizations & Fixes:** 	
+- Faster loading time, using multithreading.
+- Optimized memory usage for files and gamelists.
+- The loading sequence displays a progress bar.
+- Reviewed SVG loading and size calculation mecanism. Previous versions unloaded/reloaded SVGs each time a new container needed to display it because of a size calculation problem.
+- Ability to disable "Preload UI" mecanism. This mecanism is used to preload the UI of gamelists of every system. Disable it adds a small lags when opening
+- Don't keep in memory the cache of image filenames when launching games -> It takes a lot of memory for nothing.
+- Skip parsing 'downloaded_images' and 'media' folders ( better loading time )
+- Added option "Optimize images Vram Use" : Don't load an image in it source resolution if it needs to be displayed smaller -> Resize images in memory to save VRAM. Introduce longer image loading time, but less VRAM use.
+- Fixed video starting : Videos started fading even if the video was not available yet ( but not really fading : there was no blending ).
+- Software clipping : Avoid rendering clipped items -> They were previously clipped by OpenGl scissors.
+- Carousel animation was corrupted if the carousel has to display only one item with <maxLogoCount>1</maxLogoCount>
+- Font : Optimization when calculating text extend.
+- If XML writer fails, the gamelist.xml file become empty and set to 0Kb -> Added a mecanism to secure that. Also, previous gamelist.xml version is saved as gamelist.xml.old.
+
+**Menus :** 	
+- Cleaned menus + changed menu item order (by interest). 
+- Full support for menu Theming.
+- Separated "Transition style" and "Game launch transition"
+- Added option "Boot on gamelist"
+- Added option "Hide system view"
+- Added option "Display favorites first in gamelist"
+
+**General :** 	
+- Localisation (French actually supported)
+- OSK : On-screen Keyboard.
+- Video elements can be added as extras.
+- Fixed : Don't show Games what are marked Hidden in gamelist.
+- Added a star icon before the name of the game when it is a favorite.
+- Corrected favorites ( and custom lists ) management.
+- Don't show Directories that contains only one Game : just Show the game.
+- Case insensitive file extensions.
+- Stop using "sortname" in gamelists. It is useful.
+
+**Windows specific :** 	
+- Natively portable. If file ".emulationstation/es_systems.cfg" relative to the exe folder.
+- Simplified "Quit" menu item ( no more popup asking to restart or turn off Windows )
+- Windows is now "Windowed No border" by default. On Windows, Exclusive fullscreen can be annoying...
+- Stop using _wsystem for launching games. Run games with ShellExecuteEx instead ( avoids command window )
+- Add an option to leave ES open with a black screen "Loading..." when launching games ( avoids showing windows desktop )
+- Don't load all fields in Medadata Editor ( too tricky to use on windows, better use an external tool ).
+- With some Nvidia GPUs when VSYNC is active, SDL_GL_SwapWindow takes a lot of CPU : Introduce a smart calculation based on display frequency to reduce the time SDL_GL_SwapWindow has to wait. This saves a lot of CPU load.
+
+Je crois que c'est à peu près tout...
 
 Building
 ========
 
 EmulationStation uses some C++11 code, which means you'll need to use at least g++-4.7 on Linux, or VS2010 on Windows, to compile.
 
-EmulationStation has a few dependencies. For building, you'll need CMake, SDL2, FreeImage, FreeType, and cURL.  You also should probably install the `fonts-droid` package which contains fallback fonts for Chinese/Japanese/Korean characters, but ES will still work fine without it (this package is only used at run-time).
+EmulationStation has a few dependencies. For building, you'll need CMake, SDL2, FreeImage, FreeType, cURL and RapidJSON.  You also should probably install the `fonts-droid` package which contains fallback fonts for Chinese/Japanese/Korean characters, but ES will still work fine without it (this package is only used at run-time).
 
 **On Debian/Ubuntu:**
-All of this be easily installed with apt-get:
+All of this be easily installed with `apt-get`:
 ```bash
-sudo apt-get install libsdl2-dev libfreeimage-dev libfreetype6-dev libcurl4-openssl-dev \
-  libasound2-dev libgl1-mesa-dev build-essential cmake fonts-droid \
-  libvlc-dev libvlccore-dev vlc-nox
+sudo apt-get install libsdl2-dev libfreeimage-dev libfreetype6-dev libcurl4-openssl-dev rapidjson-dev \
+  libasound2-dev libgl1-mesa-dev build-essential cmake fonts-droid-fallback libvlc-dev \
+  libvlccore-dev vlc-bin
 ```
 **On Fedora:**
-All of this be easily installed with dnf ( With rpmfusion activated) :
+All of this be easily installed with `dnf` (with rpmfusion activated) :
 ```bash
 sudo dnf install SDL2-devel freeimage-devel freetype-devel curl-devel \
   alsa-lib-devel mesa-libGL-devel cmake \
-  vlc-devel
+  vlc-devel rapidjson-devel 
 ```
 
 Note this Repository uses a git submodule - to checkout the source and all submodules, use
@@ -57,9 +189,11 @@ Complete Raspberry Pi build instructions at [emulationstation.org](http://emulat
 
 [FreeType2](http://download.savannah.gnu.org/releases/freetype/freetype-2.4.9.tar.bz2) (you'll need to compile)
 
-[SDL2](http://www.libsdl.org/release/SDL2-devel-2.0.3-VC.zip)
+[SDL2](http://www.libsdl.org/release/SDL2-devel-2.0.8-VC.zip)
 
 [cURL](http://curl.haxx.se/download.html) (you'll need to compile or get the pre-compiled DLL version)
+
+[RapisJSON](https://github.com/tencent/rapidjson) (you'll need the `include/rapidsjon` added to the include path)
 
 (Remember to copy necessary .DLLs into the same folder as the executable: probably FreeImage.dll, freetype6.dll, SDL2.dll, libcurl.dll, and zlib1.dll. Exact list depends on if you built your libraries in "static" mode or not.)
 
@@ -96,18 +230,21 @@ The new configuration will be added to the `~/.emulationstation/es_input.cfg` fi
 
 You can use `--help` or `-h` to view a list of command-line options. Briefly outlined here:
 ```
---resolution [width] [height]	- try and force a particular resolution
---gamelist-only		- only display games defined in a gamelist.xml file.
---ignore-gamelist	- do not parse any gamelist.xml files.
---draw-framerate	- draw the framerate.
---no-exit		- do not display 'exit' in the ES menu.
---debug			- show the console window on Windows, do slightly more logging
---windowed		- run ES in a window, works best in conjunction with --resolution [w] [h].
---vsync [1/on or 0/off]	- turn vsync on or off (default is on).
---scrape		- run the interactive command-line metadata scraper.
---no-splash		- don't show the splash screen.
---max-vram [size]	- Max VRAM to use in Mb before swapping. 0 for unlimited.
---force-kiosk		- Force the UI mode to be Kiosk.
+--resolution [width] [height]   try and force a particular resolution
+--gamelist-only                 skip automatic game search, only read from gamelist.xml
+--ignore-gamelist               ignore the gamelist (useful for troubleshooting)
+--draw-framerate                display the framerate
+--no-exit                       don't show the exit option in the menu
+--no-splash                     don't show the splash screen
+--debug                         more logging, show console on Windows
+--scrape                        scrape using command line interface
+--windowed                      not fullscreen, may be used with --resolution
+--vsync [1/on or 0/off]         turn vsync on or off (default is on)
+--max-vram [size]               Max VRAM to use in Mb before swapping. 0 for unlimited
+--force-kid             Force the UI mode to be Kid
+--force-kiosk           Force the UI mode to be Kiosk
+--force-disable-filters         Force the UI to ignore applied filters in gamelist
+--help, -h                      summon a sentient, angry tuba
 ```
 
 As long as ES hasn't frozen, you can always press F4 to close the application.

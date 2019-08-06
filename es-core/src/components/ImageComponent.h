@@ -5,9 +5,10 @@
 #include "math/Vector2i.h"
 #include "GuiComponent.h"
 #include "platform.h"
+#include "resources/TextureResource.h"
 #include GLHEADER
 
-class TextureResource;
+//class TextureResource;
 
 class ImageComponent : public GuiComponent
 {
@@ -18,7 +19,7 @@ public:
 	void setDefaultImage(std::string path);
 
 	//Loads the image at the given filepath. Will tile if tile is true (retrieves texture as tiling, creates vertices accordingly).
-	void setImage(std::string path, bool tile = false);
+	void setImage(std::string path, bool tile = false, MaxSizeInfo maxSize = MaxSizeInfo());
 	//Loads an image from memory.
 	void setImage(const char* image, size_t length, bool tile = false);
 	//Use an already existing texture.
@@ -57,6 +58,8 @@ public:
 	// Multiply all pixels in the image by this color when rendering.
 	void setColorShift(unsigned int color);
 
+	virtual void setColor(unsigned int color) { setColorShift(color); }
+
 	void setFlipX(bool flip); // Mirror on the X axis.
 	void setFlipY(bool flip); // Mirror on the Y axis.
 
@@ -67,13 +70,27 @@ public:
 
 	Vector2f getSize() const override;
 
+	bool isVisible() {
+		return mVisible;
+	}
+	void setVisible(bool visible) {
+		mVisible = visible;
+	}
+
 	bool hasImage();
 
 	void render(const Transform4x4f& parentTrans) override;
 
+	void setAllowAsync(bool async) { mAllowAsync = async; };
+	void setAllowFading(bool fade) { mAllowFading = fade; };
+	void setMirroring(Vector2f mirror) { mMirror = mirror; };
+
 	virtual void applyTheme(const std::shared_ptr<ThemeData>& theme, const std::string& view, const std::string& element, unsigned int properties) override;
 
 	virtual std::vector<HelpPrompt> getHelpPrompts() override;
+
+	std::shared_ptr<TextureResource> getTexture() { return mTexture; };
+
 private:
 	Vector2f mTargetSize;
 
@@ -87,12 +104,12 @@ private:
 	{
 		Vector2f pos;
 		Vector2f tex;
-	} mVertices[6];
+	} mVertices[4];
 
-	GLubyte mColors[6*4];
+//	GLubyte mColors[6*4];
 
 	void updateVertices();
-	void updateColors();
+//	void updateColors();
 	void fadeIn(bool textureLoaded);
 
 	unsigned int mColorShift;
@@ -101,13 +118,19 @@ private:
 
 	std::shared_ptr<TextureResource> mTexture;
 	unsigned char			mFadeOpacity;
+
 	bool					mFading;
 	bool					mForceLoad;
 	bool					mDynamic;
 	bool					mRotateByTargetSize;
+	bool					mVisible;
+	bool					mAllowFading;
+	bool					mAllowAsync;
 
 	Vector2f mTopLeftCrop;
-	Vector2f mBottomRightCrop;
+	Vector2f mBottomRightCrop;	
+
+	Vector2f mMirror;
 };
 
 #endif // ES_CORE_COMPONENTS_IMAGE_COMPONENT_H

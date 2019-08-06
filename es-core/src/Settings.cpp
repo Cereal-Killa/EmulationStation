@@ -2,12 +2,14 @@
 
 #include "utils/FileSystemUtil.h"
 #include "Log.h"
+#include "Scripting.h"
 #include "platform.h"
 #include <pugixml/src/pugixml.hpp>
 #include <algorithm>
 #include <vector>
 
 Settings* Settings::sInstance = NULL;
+static std::string mEmptyString = "";
 
 // these values are NOT saved to es_settings.xml
 // since they're set through command-line arguments, and not the in-program settings menu
@@ -18,12 +20,15 @@ std::vector<const char*> settings_dont_save {
 	{ "DebugImage" },
 	{ "ForceKid" },
 	{ "ForceKiosk" },
-	{ "ForceDisableFilters" },
 	{ "IgnoreGamelist" },
 	{ "HideConsole" },
 	{ "ShowExit" },
 	{ "SplashScreen" },
+	{ "SplashScreenProgress" },
+#if !defined(_WIN32)
 	{ "VSync" },
+#endif
+	{ "FullscreenBorderless" },
 	{ "Windowed" },
 	{ "WindowWidth" },
 	{ "WindowHeight" },
@@ -32,7 +37,12 @@ std::vector<const char*> settings_dont_save {
 	{ "ScreenOffsetX" },
 	{ "ScreenOffsetY" },
 	{ "ScreenRotate" },
-	{ "ExePath" }
+	{ "MonitorID" },
+	{ "ExePath" },
+	{ "FixedCarousel" },
+	{ "HomePath" },
+	{ "MusicDirectory"},
+	{ "UserMusicDirectory" }
 };
 
 Settings::Settings()
@@ -54,17 +64,32 @@ void Settings::setDefaults()
 	mBoolMap.clear();
 	mIntMap.clear();
 
+#if _DEBUG
+	mBoolMap["FixedCarousel"] = false;
+#else
+	mBoolMap["FixedCarousel"] = false;
+#endif
+
 	mBoolMap["BackgroundJoystickInput"] = false;
 	mBoolMap["ParseGamelistOnly"] = false;
 	mBoolMap["ShowHiddenFiles"] = false;
 	mBoolMap["DrawFramerate"] = false;
 	mBoolMap["ShowExit"] = true;
+#if WIN32
+	mBoolMap["FullscreenBorderless"] = true;
+#else
+	mBoolMap["FullscreenBorderless"] = false;
+#endif
 	mBoolMap["Windowed"] = false;
 	mBoolMap["SplashScreen"] = true;
+	mBoolMap["SplashScreenProgress"] = true;
+	mBoolMap["PreloadUI"] = true;
+	mBoolMap["StartupOnGameList"] = false;
+	mBoolMap["HideSystemView"] = false;
+	
 	mStringMap["StartupSystem"] = "";
 
 	mBoolMap["VSync"] = true;
-
 	mBoolMap["EnableSounds"] = true;
 	mBoolMap["ShowHelpPrompts"] = true;
 	mBoolMap["ScrapeRatings"] = true;
@@ -73,6 +98,9 @@ void Settings::setDefaults()
 	mBoolMap["QuickSystemSelect"] = true;
 	mBoolMap["MoveCarousel"] = true;
 	mBoolMap["SaveGamelistsOnExit"] = true;
+	mBoolMap["OptimizeVRAM"] = true;	
+	mBoolMap["ThreadedLoading"] = true;
+	
 
 	mBoolMap["Debug"] = false;
 	mBoolMap["DebugGrid"] = false;
@@ -82,17 +110,37 @@ void Settings::setDefaults()
 	mIntMap["ScreenSaverTime"] = 5*60*1000; // 5 minutes
 	mIntMap["ScraperResizeWidth"] = 400;
 	mIntMap["ScraperResizeHeight"] = 0;
+
+#if defined(_WIN32)
+	mIntMap["MaxVRAM"] = 256;
+#else
 	#ifdef _RPI_
 		mIntMap["MaxVRAM"] = 80;
 	#else
 		mIntMap["MaxVRAM"] = 100;
 	#endif
+#endif
 
-	mStringMap["TransitionStyle"] = "fade";
+#if defined(_WIN32)
+	mBoolMap["HideWindow"] = false;
+#else
+	mBoolMap["HideWindow"] = true;
+#endif
+	mStringMap["GameTransitionStyle"] = "fade";
+	mStringMap["TransitionStyle"] = "slide";
+	mStringMap["Language"] = "en";	
 	mStringMap["ThemeSet"] = "";
 	mStringMap["ScreenSaverBehavior"] = "dim";
 	mStringMap["Scraper"] = "TheGamesDB";
 	mStringMap["GamelistViewStyle"] = "automatic";
+	mStringMap["DefaultGridSize"] = "";
+
+	mStringMap["ThemeColorSet"] = "";
+	mStringMap["ThemeIconSet"] = "";
+	mStringMap["ThemeMenu"] = "";
+	mStringMap["ThemeSystemView"] = "";
+	mStringMap["ThemeGamelistView"] = "";
+	mStringMap["ThemeRegionName"] = "eu";
 
 	mBoolMap["ScreenSaverControls"] = true;
 	mStringMap["ScreenSaverGameInfo"] = "never";
@@ -113,6 +161,11 @@ void Settings::setDefaults()
 	#ifdef _RPI_
 		// we're defaulting to OMX Player for full screen video on the Pi
 		mBoolMap["ScreenSaverOmxPlayer"] = true;
+		// use OMX Player defaults
+		mStringMap["SubtitleFont"] = "/usr/share/fonts/truetype/freefont/FreeSans.ttf";
+		mStringMap["SubtitleItalicFont"] = "/usr/share/fonts/truetype/freefont/FreeSansOblique.ttf";
+		mIntMap["SubtitleSize"] = 55;
+		mStringMap["SubtitleAlignment"] = "left";
 	#else
 		mBoolMap["ScreenSaverOmxPlayer"] = false;
 	#endif
@@ -125,8 +178,13 @@ void Settings::setDefaults()
 	mStringMap["OMXAudioDev"] = "both";
 	mStringMap["CollectionSystemsAuto"] = "";
 	mStringMap["CollectionSystemsCustom"] = "";
+	mBoolMap["CollectionShowSystemInfo"] = true;
 	mBoolMap["SortAllSystems"] = false;
 	mBoolMap["UseCustomCollectionsSystem"] = true;
+	mBoolMap["FavoritesFirst"] = true;
+	
+
+	mBoolMap["LocalArt"] = false;
 
 	// Audio out device for volume control
 	#ifdef _RPI_
@@ -135,6 +193,7 @@ void Settings::setDefaults()
 		mStringMap["AudioDevice"] = "Master";
 	#endif
 
+	mStringMap["AudioCard"] = "default";
 	mStringMap["UIMode"] = "Full";
 	mStringMap["UIMode_passkey"] = "uuddlrlrba";
 	mBoolMap["ForceKiosk"] = false;
@@ -148,17 +207,47 @@ void Settings::setDefaults()
 	mIntMap["ScreenOffsetX"] = 0;
 	mIntMap["ScreenOffsetY"] = 0;
 	mIntMap["ScreenRotate"]  = 0;
-
+	mIntMap["MonitorID"] = -1;	
 	mStringMap["ExePath"] = "";
+
+
+	mStringMap["ScrapperImageSrc"] = "box-2D";
+	mStringMap["ScrapperThumbSrc"] = "";
+	mBoolMap["ScrapeVideos"] = false;
+	
+	mBoolMap["audio.bgmusic"] = true;
+	mBoolMap["audio.persystem"] = false;
+	
+#ifdef BATOCERA
+	mStringMap["MusicDirectory"] = "/usr/share/batocera/music";
+	mStringMap["UserMusicDirectory"] = "/userdata/music";
+#else 
+#ifdef RECALBOX
+	mStringMap["MusicDirectory"] = "/recalbox/share/music/";
+	mStringMap["UserMusicDirectory"] = "/recalbox/share/music/";
+#else
+	mStringMap["MusicDirectory"] = "";
+	mStringMap["UserMusicDirectory"] = "";
+#endif
+#endif
+
+	mDefaultBoolMap = mBoolMap;
+	mDefaultIntMap = mIntMap;
+	mDefaultFloatMap = mFloatMap;
+	mDefaultStringMap = mStringMap;
 }
 
 template <typename K, typename V>
-void saveMap(pugi::xml_document& doc, std::map<K, V>& map, const char* type)
+void saveMap(pugi::xml_document& doc, std::map<K, V>& map, const char* type, std::map<K, V>& defaultMap)
 {
 	for(auto iter = map.cbegin(); iter != map.cend(); iter++)
 	{
 		// key is on the "don't save" list, so don't save it
 		if(std::find(settings_dont_save.cbegin(), settings_dont_save.cend(), iter->first) != settings_dont_save.cend())
+			continue;
+
+		auto def = defaultMap.find(iter->first);
+		if (def != defaultMap.cend() && def->second == iter->second)
 			continue;
 
 		pugi::xml_node node = doc.append_child(type);
@@ -174,19 +263,33 @@ void Settings::saveFile()
 
 	pugi::xml_document doc;
 
-	saveMap<std::string, bool>(doc, mBoolMap, "bool");
-	saveMap<std::string, int>(doc, mIntMap, "int");
-	saveMap<std::string, float>(doc, mFloatMap, "float");
+	saveMap<std::string, bool>(doc, mBoolMap, "bool", mDefaultBoolMap);
+	saveMap<std::string, int>(doc, mIntMap, "int", mDefaultIntMap);
+	saveMap<std::string, float>(doc, mFloatMap, "float", mDefaultFloatMap);
 
 	//saveMap<std::string, std::string>(doc, mStringMap, "string");
 	for(auto iter = mStringMap.cbegin(); iter != mStringMap.cend(); iter++)
 	{
+		// key is on the "don't save" list, so don't save it
+		if (std::find(settings_dont_save.cbegin(), settings_dont_save.cend(), iter->first) != settings_dont_save.cend())
+			continue;
+
+		auto def = mDefaultStringMap.find(iter->first);
+		if (def == mDefaultStringMap.cend() && iter->second.empty())
+			continue;
+
+		if (def != mDefaultStringMap.cend() && def->second == iter->second)
+			continue;
+		
 		pugi::xml_node node = doc.append_child("string");
 		node.append_attribute("name").set_value(iter->first.c_str());
 		node.append_attribute("value").set_value(iter->second.c_str());
 	}
 
 	doc.save_file(path.c_str());
+
+	Scripting::fireEvent("config-changed");
+	Scripting::fireEvent("settings-changed");
 }
 
 void Settings::loadFile()
@@ -215,11 +318,12 @@ void Settings::loadFile()
 }
 
 //Print a warning message if the setting we're trying to get doesn't already exist in the map, then return the value in the map.
-#define SETTINGS_GETSET(type, mapName, getMethodName, setMethodName) type Settings::getMethodName(const std::string& name) \
+#define SETTINGS_GETSET(type, mapName, getMethodName, setMethodName, defaultValue) type Settings::getMethodName(const std::string& name) \
 { \
 	if(mapName.find(name) == mapName.cend()) \
 	{ \
-		LOG(LogError) << "Tried to use unset setting " << name << "!"; \
+		/*LOG(LogError) << "Tried to use unset setting " << name << "!";*/ \
+		return defaultValue; \
 	} \
 	return mapName[name]; \
 } \
@@ -228,7 +332,7 @@ void Settings::setMethodName(const std::string& name, type value) \
 	mapName[name] = value; \
 }
 
-SETTINGS_GETSET(bool, mBoolMap, getBool, setBool);
-SETTINGS_GETSET(int, mIntMap, getInt, setInt);
-SETTINGS_GETSET(float, mFloatMap, getFloat, setFloat);
-SETTINGS_GETSET(const std::string&, mStringMap, getString, setString);
+SETTINGS_GETSET(bool, mBoolMap, getBool, setBool, false);
+SETTINGS_GETSET(int, mIntMap, getInt, setInt, 0);
+SETTINGS_GETSET(float, mFloatMap, getFloat, setFloat, 0.0f);
+SETTINGS_GETSET(const std::string&, mStringMap, getString, setString, mEmptyString);

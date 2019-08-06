@@ -7,33 +7,39 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <vector>
 #include <thread>
 
 class TextureData;
 class TextureResource;
+class TextureDataManager;
 
 class TextureLoader
 {
 public:
-	TextureLoader();
+	TextureLoader(TextureDataManager* mgr);
 	~TextureLoader();
 
 	void load(std::shared_ptr<TextureData> textureData);
 	void remove(std::shared_ptr<TextureData> textureData);
+	void clearQueue();
 
 	size_t getQueueSize();
 
-private:
-	void processQueue();
+private:	
 	void threadProc();
 
-	std::list<std::shared_ptr<TextureData> > 										mTextureDataQ;
+	std::list<std::shared_ptr<TextureData>> 										mProcessingTextureDataQ;
+
+	std::list<std::shared_ptr<TextureData>> 										mTextureDataQ;
 	std::map<TextureData*, std::list<std::shared_ptr<TextureData> >::const_iterator > 	mTextureDataLookup;
 
-	std::thread*				mThread;
+	std::vector<std::thread>	mThreads;	
 	std::mutex					mMutex;
 	std::condition_variable		mEvent;
 	bool 						mExit;
+
+	TextureDataManager*			mManager;
 };
 
 //
@@ -63,7 +69,7 @@ public:
 	// will be deleted when the other thread has finished with it
 	void remove(const TextureResource* key);
 
-	std::shared_ptr<TextureData> get(const TextureResource* key);
+	std::shared_ptr<TextureData> get(const TextureResource* key, bool enableLoading = true);
 	bool bind(const TextureResource* key);
 
 	// Get the total size of all textures managed by this object, loaded and unloaded in bytes
@@ -76,7 +82,12 @@ public:
 	// Load a texture, freeing resources as necessary to make space
 	void load(std::shared_ptr<TextureData> tex, bool block = false);
 
+	void clearQueue();
+
+	void onTextureLoaded(std::shared_ptr<TextureData> tex);
+
 private:
+	std::mutex					mMutex;
 
 	std::list<std::shared_ptr<TextureData> >												mTextures;
 	std::map<const TextureResource*, std::list<std::shared_ptr<TextureData> >::const_iterator > 	mTextureLookup;

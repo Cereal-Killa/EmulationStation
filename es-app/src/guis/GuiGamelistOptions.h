@@ -4,6 +4,7 @@
 
 #include "components/MenuComponent.h"
 #include "components/OptionListComponent.h"
+#include "components/SliderComponent.h"
 #include "FileData.h"
 #include "GuiComponent.h"
 
@@ -13,12 +14,14 @@ class SystemData;
 class GuiGamelistOptions : public GuiComponent
 {
 public:
-	GuiGamelistOptions(Window* window, SystemData* system);
+	GuiGamelistOptions(Window* window, SystemData* system, bool showGridFeatures = false);
 	virtual ~GuiGamelistOptions();
 
 	virtual bool input(InputConfig* config, Input input) override;
 	virtual std::vector<HelpPrompt> getHelpPrompts() override;
 	virtual HelpStyle getHelpStyle() override;
+
+	static std::vector<std::string> gridSizes;
 
 private:
 	void openGamelistFilter();
@@ -32,8 +35,12 @@ private:
 	typedef OptionListComponent<char> LetterList;
 	std::shared_ptr<LetterList> mJumpToLetterList;
 
-	typedef OptionListComponent<const FileData::SortType*> SortList;
+	typedef OptionListComponent<unsigned int> SortList;
 	std::shared_ptr<SortList> mListSort;
+
+	std::shared_ptr<OptionListComponent<std::string>> mViewMode;
+
+	std::shared_ptr<OptionListComponent<std::string>> mGridSize;
 
 	SystemData* mSystem;
 	IGameListView* getGamelist();

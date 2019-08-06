@@ -9,9 +9,19 @@ namespace Utils
 {
 	namespace FileSystem
 	{
-		typedef std::list<std::string> stringList;
+		struct FileInfo
+		{
+		public:
+			std::string path;
+			bool hidden;
+			bool directory;
+		};
 
-		stringList  getDirContent      (const std::string& _path, const bool _recursive = false);
+		typedef std::list<std::string> stringList;
+		typedef std::list<FileInfo> fileList;
+
+		fileList  getDirInfo(const std::string& _path/*, const bool _recursive = false*/);
+		stringList  getDirContent      (const std::string& _path, const bool _recursive = false, const bool includeHidden = true);
 		stringList  getPathList        (const std::string& _path);
 		std::string getHomePath        ();
 		std::string getCWDPath         ();
@@ -29,17 +39,24 @@ namespace Utils
 		std::string createRelativePath (const std::string& _path, const std::string& _relativeTo, const bool _allowHome);
 		std::string removeCommonPath   (const std::string& _path, const std::string& _common, bool& _contains);
 		std::string resolveSymlink     (const std::string& _path);
+		std::string combine(const std::string& _path, const std::string& filename);
 		bool        removeFile         (const std::string& _path);
 		bool        createDirectory    (const std::string& _path);
 		bool        exists             (const std::string& _path);
+		size_t		getFileSize(const std::string& _path);
 		bool        isAbsolute         (const std::string& _path);
 		bool        isRegularFile      (const std::string& _path);
 		bool        isDirectory        (const std::string& _path);
 		bool        isSymlink          (const std::string& _path);
 		bool        isHidden           (const std::string& _path);
-		bool        isEquivalent       (const std::string& _path1, const std::string& _path2);
 
+		void		setHomePath		   (std::string path);
+		bool		copyFile		   (const std::string src, const std::string dst);
+	
+		void		writeAllText	   (const std::string fileName, const std::string text);
 	} // FileSystem::
+
+
 
 } // Utils::
 

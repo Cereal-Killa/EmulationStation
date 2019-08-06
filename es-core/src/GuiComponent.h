@@ -7,6 +7,7 @@
 #include "HelpPrompt.h"
 #include "HelpStyle.h"
 #include "InputConfig.h"
+#include "EsLocale.h"
 #include <functional>
 #include <memory>
 
@@ -22,6 +23,8 @@ class GuiComponent
 public:
 	GuiComponent(Window* window);
 	virtual ~GuiComponent();
+
+	static bool ALLOWANIMATIONS;
 
 	virtual void textInput(const char* text);
 
@@ -61,6 +64,8 @@ public:
     void setSize(float w, float h);
     virtual void onSizeChanged() {};
 
+	virtual void setColor(unsigned int color) {};
+
 	virtual Vector2f getRotationSize() const { return getSize(); };
 
 	float getRotation() const;
@@ -88,6 +93,7 @@ public:
 	void sortChildren();
 	unsigned int getChildCount() const;
 	GuiComponent* getChild(unsigned int i) const;
+	bool isChild(GuiComponent* cmp);
 
 	// animation will be automatically deleted when it completes or is stopped.
 	bool isAnimationPlaying(unsigned char slot) const;
@@ -108,6 +114,10 @@ public:
 
 	virtual std::string getValue() const;
 	virtual void setValue(const std::string& value);
+
+
+	virtual std::string getTag() const;
+	virtual void setTag(const std::string& value);
 
 	virtual void onFocusGained() {};
 	virtual void onFocusLost() {};
@@ -144,6 +154,8 @@ protected:
 
 	GuiComponent* mParent;
 	std::vector<GuiComponent*> mChildren;
+
+	std::string mTag;
 
 	Vector3f mPosition;
 	Vector2f mOrigin;

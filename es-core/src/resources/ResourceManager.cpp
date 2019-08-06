@@ -52,9 +52,10 @@ const ResourceData ResourceManager::getFileData(const std::string& path) const
 	//check if its a resource
 	const std::string respath = getResourcePath(path);
 
-	if(Utils::FileSystem::exists(respath))
+	auto size = Utils::FileSystem::getFileSize(respath);
+	if (size > 0)
 	{
-		ResourceData data = loadFile(respath);
+		ResourceData data = loadFile(respath, size);
 		return data;
 	}
 
@@ -63,13 +64,16 @@ const ResourceData ResourceManager::getFileData(const std::string& path) const
 	return data;
 }
 
-ResourceData ResourceManager::loadFile(const std::string& path) const
+ResourceData ResourceManager::loadFile(const std::string& path, size_t size) const
 {
 	std::ifstream stream(path, std::ios::binary);
 
-	stream.seekg(0, stream.end);
-	size_t size = (size_t)stream.tellg();
-	stream.seekg(0, stream.beg);
+	if (size == 0)
+	{
+		stream.seekg(0, stream.end);
+		size = (size_t)stream.tellg();
+		stream.seekg(0, stream.beg);
+	}
 
 	//supply custom deleter to properly free array
 	std::shared_ptr<unsigned char> data(new unsigned char[size], array_deleter);
@@ -89,18 +93,26 @@ bool ResourceManager::fileExists(const std::string& path) const
 	return Utils::FileSystem::exists(path);
 }
 
+#include "resources/TextureResource.h"
+
 void ResourceManager::unloadAll()
 {
 	auto iter = mReloadables.cbegin();
 	while(iter != mReloadables.cend())
-	{
-		if(!iter->expired())
-		{
-			iter->lock()->unload(sInstance);
+	{					
+		std::shared_ptr<ReloadableInfo> info = *iter;
+
+		if (!info->data.expired())
+		{		
+			if (!info->locked)
+				info->reload = info->data.lock()->unload();
+			else
+				info->locked = false;
+
 			iter++;
-		}else{
-			iter = mReloadables.erase(iter);
 		}
+		else
+			iter = mReloadables.erase(iter);		
 	}
 }
 
@@ -109,17 +121,50 @@ void ResourceManager::reloadAll()
 	auto iter = mReloadables.cbegin();
 	while(iter != mReloadables.cend())
 	{
-		if(!iter->expired())
+		std::shared_ptr<ReloadableInfo> info = *iter;
+
+		if (!info->data.expired())
 		{
-			iter->lock()->reload(sInstance);
+			if (info->reload)
+			{
+				info->data.lock()->reload();
+				info->reload = false;
+			}
+
 			iter++;
-		}else{
-			iter = mReloadables.erase(iter);
 		}
+		else
+			iter = mReloadables.erase(iter);		
 	}
 }
 
 void ResourceManager::addReloadable(std::weak_ptr<IReloadable> reloadable)
 {
-	mReloadables.push_back(reloadable);
+	std::shared_ptr<ReloadableInfo> info = std::make_shared<ReloadableInfo>();
+	info->data = reloadable;
+	info->reload = false;
+	info->locked = false;
+	mReloadables.push_back(info);
+}
+
+void ResourceManager::removeReloadable(std::weak_ptr<IReloadable> reloadable)
+{
+	auto iter = mReloadables.cbegin();
+	while (iter != mReloadables.cend())
+	{
+		std::shared_ptr<ReloadableInfo> info = *iter;
+
+		if (!info->data.expired())
+		{
+			if (info->data.lock() == reloadable.lock())
+			{
+				info->locked = true;
+				break;
+			}
+
+			iter++;
+		}
+		else
+			iter = mReloadables.erase(iter);
+	}
 }

@@ -4,53 +4,45 @@
 
 namespace FileSorts
 {
-	const FileData::SortType typesArr[] = {
-		FileData::SortType(&compareName, true, "filename, ascending"),
-		FileData::SortType(&compareName, false, "filename, descending"),
+	const FolderData::SortType typesArr[] = {
+		FolderData::SortType(&compareName, true, "filename, ascending"),
+		FolderData::SortType(&compareName, false, "filename, descending"),
 
-		FileData::SortType(&compareRating, true, "rating, ascending"),
-		FileData::SortType(&compareRating, false, "rating, descending"),
+		FolderData::SortType(&compareRating, true, "rating, ascending"),
+		FolderData::SortType(&compareRating, false, "rating, descending"),
 
-		FileData::SortType(&compareTimesPlayed, true, "times played, ascending"),
-		FileData::SortType(&compareTimesPlayed, false, "times played, descending"),
+		FolderData::SortType(&compareTimesPlayed, true, "times played, ascending"),
+		FolderData::SortType(&compareTimesPlayed, false, "times played, descending"),
 
-		FileData::SortType(&compareLastPlayed, true, "last played, ascending"),
-		FileData::SortType(&compareLastPlayed, false, "last played, descending"),
+		FolderData::SortType(&compareLastPlayed, true, "last played, ascending"),
+		FolderData::SortType(&compareLastPlayed, false, "last played, descending"),
 
-		FileData::SortType(&compareNumPlayers, true, "number players, ascending"),
-		FileData::SortType(&compareNumPlayers, false, "number players, descending"),
+		FolderData::SortType(&compareNumPlayers, true, "number of players, ascending"),
+		FolderData::SortType(&compareNumPlayers, false, "number of players, descending"),
 
-		FileData::SortType(&compareReleaseDate, true, "release date, ascending"),
-		FileData::SortType(&compareReleaseDate, false, "release date, descending"),
+		FolderData::SortType(&compareReleaseDate, true, "release date, ascending"),
+		FolderData::SortType(&compareReleaseDate, false, "release date, descending"),
 
-		FileData::SortType(&compareGenre, true, "genre, ascending"),
-		FileData::SortType(&compareGenre, false, "genre, descending"),
+		FolderData::SortType(&compareGenre, true, "genre, ascending"),
+		FolderData::SortType(&compareGenre, false, "genre, descending"),
 
-		FileData::SortType(&compareDeveloper, true, "developer, ascending"),
-		FileData::SortType(&compareDeveloper, false, "developer, descending"),
+		FolderData::SortType(&compareDeveloper, true, "developer, ascending"),
+		FolderData::SortType(&compareDeveloper, false, "developer, descending"),
 
-		FileData::SortType(&comparePublisher, true, "publisher, ascending"),
-		FileData::SortType(&comparePublisher, false, "publisher, descending"),
+		FolderData::SortType(&comparePublisher, true, "publisher, ascending"),
+		FolderData::SortType(&comparePublisher, false, "publisher, descending"),
 
-		FileData::SortType(&compareSystem, true, "system, ascending"),
-		FileData::SortType(&compareSystem, false, "system, descending")
+		FolderData::SortType(&compareSystem, true, "system, ascending"),
+		FolderData::SortType(&compareSystem, false, "system, descending")
 	};
 
-	const std::vector<FileData::SortType> SortTypes(typesArr, typesArr + sizeof(typesArr)/sizeof(typesArr[0]));
+	const std::vector<FolderData::SortType> SortTypes(typesArr, typesArr + sizeof(typesArr)/sizeof(typesArr[0]));
 
 	//returns if file1 should come before file2
 	bool compareName(const FileData* file1, const FileData* file2)
 	{
-		// we compare the actual metadata name, as collection files have the system appended which messes up the order
-		std::string name1 = Utils::String::toUpper(file1->metadata.get("sortname"));
-		std::string name2 = Utils::String::toUpper(file2->metadata.get("sortname"));
-		if(name1.empty()){
-			name1 = Utils::String::toUpper(file1->metadata.get("name"));
-		}
-		if(name2.empty()){
-			name2 = Utils::String::toUpper(file2->metadata.get("name"));
-		}
-		return name1.compare(name2) < 0;
+		std::string name1 = file1->metadata.getName();
+		return name1.compare(file2->metadata.getName()) < 0;
 	}
 
 	bool compareRating(const FileData* file1, const FileData* file2)

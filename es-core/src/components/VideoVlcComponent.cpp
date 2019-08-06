@@ -2,6 +2,7 @@
 
 #include "resources/TextureResource.h"
 #include "utils/StringUtil.h"
+#include "utils/FileSystemUtil.h"
 #include "PowerSaver.h"
 #include "Renderer.h"
 #include "Settings.h"
@@ -31,13 +32,20 @@ static void unlock(void *data, void* /*id*/, void *const* /*p_pixels*/) {
 }
 
 // VLC wants to display a video frame.
-static void display(void* /*data*/, void* /*id*/) {
-	//Data to be displayed
+static void display(void* data, void* id) 
+{
+	if (data == NULL)
+		return;
+
+	struct VideoContext *c = (struct VideoContext *)data;
+	if (c->valid && c->component != NULL && !c->component->isPlaying() && c->component->isWaitingForVideoToStart())
+		c->component->onVideoStarted();
 }
 
 VideoVlcComponent::VideoVlcComponent(Window* window, std::string subtitles) :
 	VideoComponent(window),
-	mMediaPlayer(nullptr)
+	mMediaPlayer(nullptr), 
+	mSubtitlePath(subtitles)
 {
 	memset(&mContext, 0, sizeof(mContext));
 
@@ -124,7 +132,7 @@ void VideoVlcComponent::resize()
 		}
 
 	// mSize.y() should already be rounded
-	mTexture->rasterizeAt((size_t)Math::round(mSize.x()), (size_t)Math::round(mSize.y()));
+	mTexture->rasterizeAt(Math::round(mSize.x()), Math::round(mSize.y()));
 
 	onSizeChanged();
 }
@@ -132,130 +140,101 @@ void VideoVlcComponent::resize()
 void VideoVlcComponent::render(const Transform4x4f& parentTrans)
 {
 	VideoComponent::render(parentTrans);
-	float x, y;
 
+	if (!mIsPlaying || !mContext.valid)
+		return;
+
+	float t = mFadeIn;
+	if (mFadeIn < 1.0)
+	{
+		t = 1.0 - mFadeIn;
+		t -= 1; // cubic ease in
+		t = Math::lerp(0, 1, t*t*t + 1);
+		t = 1.0 - t;
+	}
+
+	if (t == 0.0)
+		return;
+	
 	Transform4x4f trans = parentTrans * getTransform();
-	GuiComponent::renderChildren(trans);
-
 	Renderer::setMatrix(trans);
 
-	if (mIsPlaying && mContext.valid)
-	{
-		float tex_offs_x = 0.0f;
-		float tex_offs_y = 0.0f;
-		float x2;
-		float y2;
+	// <font color = "#ff0000">red text< / font>
+	//<font size = "16px" color = "white">phrase< / font>
 
-		x = 0.0;
-		y = 0.0;
-		x2 = mSize.x();
-		y2 = mSize.y();
+	float x2 = mSize.x();
+	float y2 = mSize.y();
 
-		// Define a structure to contain the data for each vertex
-		struct Vertex
-		{
-			Vector2f pos;
-			Vector2f tex;
-			Vector4f colour;
-		} vertices[6];
+	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-		// We need two triangles to cover the rectangular area
-		vertices[0].pos[0] = x; 			vertices[0].pos[1] = y;
-		vertices[1].pos[0] = x; 			vertices[1].pos[1] = y2;
-		vertices[2].pos[0] = x2;			vertices[2].pos[1] = y;
+	// Build a texture for the video frame
+	mTexture->initFromPixels((unsigned char*)mContext.surface->pixels, mContext.surface->w, mContext.surface->h);
+	mTexture->bind();
 
-		vertices[3].pos[0] = x2;			vertices[3].pos[1] = y;
-		vertices[4].pos[0] = x; 			vertices[4].pos[1] = y2;
-		vertices[5].pos[0] = x2;			vertices[5].pos[1] = y2;
+	glBegin(GL_QUADS);
 
-		// Texture coordinates
-		vertices[0].tex[0] = -tex_offs_x; 			vertices[0].tex[1] = -tex_offs_y;
-		vertices[1].tex[0] = -tex_offs_x; 			vertices[1].tex[1] = 1.0f + tex_offs_y;
-		vertices[2].tex[0] = 1.0f + tex_offs_x;		vertices[2].tex[1] = -tex_offs_y;
+	glColor4f(1.0f, 1.0f, 1.0f, t);
+	glTexCoord2f(0, 0);
+	glVertex2f(0, 0);
 
-		vertices[3].tex[0] = 1.0f + tex_offs_x;		vertices[3].tex[1] = -tex_offs_y;
-		vertices[4].tex[0] = -tex_offs_x;			vertices[4].tex[1] = 1.0f + tex_offs_y;
-		vertices[5].tex[0] = 1.0f + tex_offs_x;		vertices[5].tex[1] = 1.0f + tex_offs_y;
+	glColor4f(1.0f, 1.0f, 1.0f, t);
+	glTexCoord2f(0, 1.0f);
+	glVertex2f(0, y2);
 
-		// Colours - use this to fade the video in and out
-		for (int i = 0; i < (4 * 6); ++i) {
-			if ((i%4) < 3)
-				vertices[i / 4].colour[i % 4] = mFadeIn;
-			else
-				vertices[i / 4].colour[i % 4] = 1.0f;
-		}
+	glColor4f(1.0f, 1.0f, 1.0f, t);
+	glTexCoord2f(1.0f, 1.0f);
+	glVertex2f(x2, y2);
 
-		glEnable(GL_TEXTURE_2D);
+	glColor4f(1.0f, 1.0f, 1.0f, t);
+	glTexCoord2f(1.0f, 0);
+	glVertex2f(x2, 0);
 
-		// Build a texture for the video frame
-		mTexture->initFromPixels((unsigned char*)mContext.surface->pixels, mContext.surface->w, mContext.surface->h);
-		mTexture->bind();
+	glEnd();
 
-		// Render it
-		glEnableClientState(GL_COLOR_ARRAY);
-		glEnableClientState(GL_VERTEX_ARRAY);
-		glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-
-		glColorPointer(4, GL_FLOAT, sizeof(Vertex), &vertices[0].colour);
-		glVertexPointer(2, GL_FLOAT, sizeof(Vertex), &vertices[0].pos);
-		glTexCoordPointer(2, GL_FLOAT, sizeof(Vertex), &vertices[0].tex);
-
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-
-		glDisableClientState(GL_VERTEX_ARRAY);
-		glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-		glDisableClientState(GL_COLOR_ARRAY);
-
-		glDisable(GL_TEXTURE_2D);
-	} else {
-		VideoComponent::renderSnapshot(parentTrans);
-	}
+	glDisable(GL_TEXTURE_2D);
+	glDisable(GL_BLEND);	
 }
 
 void VideoVlcComponent::setupContext()
 {
-	if (!mContext.valid)
-	{
-		// Create an RGBA surface to render the video into
-		mContext.surface = SDL_CreateRGBSurface(SDL_SWSURFACE, (int)mVideoWidth, (int)mVideoHeight, 32, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff);
-		mContext.mutex = SDL_CreateMutex();
-		mContext.valid = true;
-		resize();
-	}
+	if (mContext.valid)
+		return;
+
+	// Create an RGBA surface to render the video into
+	mContext.surface = SDL_CreateRGBSurface(SDL_SWSURFACE, (int)mVideoWidth, (int)mVideoHeight, 32, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff);
+	mContext.mutex = SDL_CreateMutex();
+	mContext.component = this;
+	mContext.valid = true;
+	resize();
 }
 
 void VideoVlcComponent::freeContext()
 {
-	if (mContext.valid)
-	{
-		SDL_FreeSurface(mContext.surface);
-		SDL_DestroyMutex(mContext.mutex);
-		mContext.valid = false;
-	}
+	if (!mContext.valid)
+		return;
+
+	SDL_FreeSurface(mContext.surface);
+	SDL_DestroyMutex(mContext.mutex);
+
+	mContext.component = NULL;
+	mContext.valid = false;
 }
 
 void VideoVlcComponent::setupVLC(std::string subtitles)
 {
 	// If VLC hasn't been initialised yet then do it now
-	if (!mVLC)
-	{
-		const char** args;
-		const char* newargs[] = { "--quiet", "--sub-file", subtitles.c_str() };
-		const char* singleargs[] = { "--quiet" };
-		int argslen = 0;
+	if (mVLC != nullptr)
+		return;
 
-		if (!subtitles.empty())
-		{
-			argslen = sizeof(newargs) / sizeof(newargs[0]);
-			args = newargs;
-		}
-		else
-		{
-			argslen = sizeof(singleargs) / sizeof(singleargs[0]);
-			args = singleargs;
-		}
-		mVLC = libvlc_new(argslen, args);
-	}
+	const char** args;
+	const char* singleargs[] = { "--quiet" };
+
+	int argslen = sizeof(singleargs) / sizeof(singleargs[0]);
+	args = singleargs;
+
+	mVLC = libvlc_new(argslen, args);
 }
 
 void VideoVlcComponent::handleLooping()
@@ -292,7 +271,19 @@ void VideoVlcComponent::startVideo()
 		{
 			// Set the video that we are going to be playing so we don't attempt to restart it
 			mPlayingVideoPath = mVideoPath;
+						
+			if (!mSubtitlePath.empty())
+			{
+				if (!mSubtitleTmpFile.empty())
+					Utils::FileSystem::removeFile(mSubtitleTmpFile);
 
+				auto ext = Utils::FileSystem::getExtension(path);
+				auto srt = Utils::String::replace(path, ext, ".srt");
+				Utils::FileSystem::copyFile(mSubtitlePath, srt);
+				
+				mSubtitleTmpFile = srt;
+			}
+			
 			// Open the media
 			mMedia = libvlc_media_new_path(mVLC, path.c_str());
 			if (mMedia)
@@ -345,13 +336,15 @@ void VideoVlcComponent::startVideo()
 						libvlc_audio_set_mute(mMediaPlayer, 1);
 					}
 
-					libvlc_media_player_play(mMediaPlayer);
+					auto cnt = libvlc_video_get_spu_count(mMediaPlayer);
+				
+					libvlc_media_player_play(mMediaPlayer);					
 					libvlc_video_set_callbacks(mMediaPlayer, lock, unlock, display, (void*)&mContext);
 					libvlc_video_set_format(mMediaPlayer, "RGBA", (int)mVideoWidth, (int)mVideoHeight, (int)mVideoWidth * 4);
-
+					
 					// Update the playing state
-					mIsPlaying = true;
-					mFadeIn = 0.0f;
+					//mIsPlaying = true;
+					//mFadeIn = 0.0f;
 				}
 			}
 		}
@@ -371,5 +364,11 @@ void VideoVlcComponent::stopVideo()
 		mMediaPlayer = NULL;
 		freeContext();
 		PowerSaver::resume();
+	}
+
+	if (!mSubtitleTmpFile.empty())
+	{
+		Utils::FileSystem::removeFile(mSubtitleTmpFile);
+		mSubtitleTmpFile = "";
 	}
 }

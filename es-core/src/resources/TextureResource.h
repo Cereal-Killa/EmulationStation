@@ -11,17 +11,52 @@
 
 class TextureData;
 
+class MaxSizeInfo
+{
+public:	
+	MaxSizeInfo() : mSize(Vector2f(0, 0)), mExternalZoom(false) {}
+
+	MaxSizeInfo(float x, float y) : mSize(Vector2f(x, y)), mExternalZoom(false), mExternalZoomKnown(false) { }
+	MaxSizeInfo(Vector2f size) : mSize(size), mExternalZoom(false), mExternalZoomKnown(false) { }
+
+	MaxSizeInfo(float x, float y, bool externalZoom) : mSize(Vector2f(x, y)), mExternalZoom(externalZoom), mExternalZoomKnown(true){ }
+	MaxSizeInfo(Vector2f size, bool externalZoom) : mSize(size), mExternalZoom(externalZoom), mExternalZoomKnown(true) { }
+
+	bool empty() { return mSize.x() == 0 && mSize.y() == 0; }
+
+	float x() { return mSize.x(); }
+	float y() { return mSize.y(); }
+
+	bool externalZoom() 
+	{ 
+		return mExternalZoom; 
+	}
+
+	bool isExternalZoomKnown()
+	{
+		return mExternalZoomKnown;
+	}
+
+private:
+	Vector2f mSize;
+	bool	 mExternalZoom;
+	bool	 mExternalZoomKnown;
+};
+
 // An OpenGL texture.
 // Automatically recreates the texture with renderer deinit/reinit.
 class TextureResource : public IReloadable
 {
+protected:
+	TextureResource(const std::string& path, bool tile, bool dynamic, bool allowAsync, MaxSizeInfo maxSize);
+
 public:
-	static std::shared_ptr<TextureResource> get(const std::string& path, bool tile = false, bool forceLoad = false, bool dynamic = true);
+	static std::shared_ptr<TextureResource> get(const std::string& path, bool tile = false, bool forceLoad = false, bool dynamic = true, bool asReloadable = true, MaxSizeInfo maxSize = MaxSizeInfo());
 	void initFromPixels(const unsigned char* dataRGBA, size_t width, size_t height);
 	virtual void initFromMemory(const char* file, size_t length);
 
 	// For scalable source images in textures we want to set the resolution to rasterize at
-	void rasterizeAt(size_t width, size_t height);
+	void rasterizeAt(float width, float height);
 	Vector2f getSourceImageSize() const;
 
 	virtual ~TextureResource();
@@ -34,11 +69,13 @@ public:
 
 	static size_t getTotalMemUsage(); // returns an approximation of total VRAM used by textures (in bytes)
 	static size_t getTotalTextureSize(); // returns the number of bytes that would be used if all textures were in memory
+	static void resetCache();
 
-protected:
-	TextureResource(const std::string& path, bool tile, bool dynamic);
-	virtual void unload(std::shared_ptr<ResourceManager>& rm);
-	virtual void reload(std::shared_ptr<ResourceManager>& rm);
+public:
+	virtual bool unload();
+	virtual void reload();
+
+	void onTextureLoaded(std::shared_ptr<TextureData> tex);
 
 private:
 	// mTextureData is used for textures that are not loaded from a file - these ones
@@ -54,7 +91,12 @@ private:
 
 	typedef std::pair<std::string, bool> TextureKeyType;
 	static std::map< TextureKeyType, std::weak_ptr<TextureResource> > sTextureMap; // map of textures, used to prevent duplicate textures
+	static std::map< TextureKeyType, std::shared_ptr<TextureResource> > sPermanentTextureMap; // map of textures, used to prevent duplicate textures // FCAWEAK
 	static std::set<TextureResource*> 	sAllTextures;	// Set of all textures, used for memory management
+
+#if _DEBUG
+	std::string	mPath;
+#endif
 };
 
 #endif // ES_CORE_RESOURCES_TEXTURE_RESOURCE_H

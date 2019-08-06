@@ -17,6 +17,7 @@ namespace Renderer
 {
 	bool init();
 	void deinit();
+	void activateWindow();
 
 	unsigned int getWindowWidth();
 	unsigned int getWindowHeight();
@@ -33,11 +34,15 @@ namespace Renderer
 
 	void pushClipRect(Vector2i pos, Vector2i dim);
 	void popClipRect();
+	bool isClippingEnabled();
 
 	void setMatrix(const Transform4x4f& transform);
 
 	void drawRect(int x, int y, int w, int h, unsigned int color, GLenum blend_sfactor = GL_SRC_ALPHA, GLenum blend_dfactor = GL_ONE_MINUS_SRC_ALPHA);
 	void drawRect(float x, float y, float w, float h, unsigned int color, GLenum blend_sfactor = GL_SRC_ALPHA, GLenum blend_dfactor = GL_ONE_MINUS_SRC_ALPHA);
+	void drawGradientRect(int x, int y, int w, int h, unsigned int color, unsigned int colorBottom, bool horz = false, GLenum blend_sfactor = GL_SRC_ALPHA, GLenum blend_dfactor = GL_ONE_MINUS_SRC_ALPHA);
+
+	bool isVisibleOnScreen(float x, float y, float w, float h);
 }
 
 #endif // ES_CORE_RENDERER_H
