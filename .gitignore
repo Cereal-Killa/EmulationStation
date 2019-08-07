@@ -41,3 +41,4 @@ CPackConfig.cmake
 CPackSourceConfig.cmake
 *.cbp
 /.vs
+/.vscode

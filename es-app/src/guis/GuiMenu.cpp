@@ -976,12 +976,6 @@ void GuiMenu::openConfigInput()
 
 void GuiMenu::openQuitMenu()
 {
-/*#ifdef WIN32
-	Scripting::fireEvent("quit");
-	quitES("");
-	return;
-#endif*/
-
 	auto s = new GuiSettings(mWindow, _T("QUIT"));
 
 	Window* window = mWindow;
@@ -989,17 +983,6 @@ void GuiMenu::openQuitMenu()
 	ComponentListRow row;
 	if (UIModeController::getInstance()->isUIModeFull())
 	{
-		row.makeAcceptInputHandler([window] {
-			window->pushGui(new GuiMsgBox(window, "REALLY RESTART?", "YES",
-				[] {
-				Scripting::fireEvent("quit");				
-				if(quitES("/tmp/es-restart") != 0)
-					LOG(LogWarning) << "Restart terminated with non-zero result!";
-			}, "NO", nullptr));
-		});
-		row.addElement(std::make_shared<TextComponent>(window, "RESTART EMULATIONSTATION", ThemeData::getMenuTheme()->Text.font, ThemeData::getMenuTheme()->Text.color), true);
-		s->addRow(row);
-
 		if(Settings::getInstance()->getBool("ShowExit"))
 		{
 			row.elements.clear();
