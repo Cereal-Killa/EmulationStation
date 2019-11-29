@@ -116,7 +116,7 @@ namespace Renderer
 			sdlWindowPosition.x(),
 			sdlWindowPosition.y(),
 			windowWidth, windowHeight,
-			SDL_WINDOW_OPENGL | (Settings::getInstance()->getBool("Windowed") ? 0 : (Settings::getInstance()->getBool("FullscreenBorderless") ? SDL_WINDOW_BORDERLESS : SDL_WINDOW_FULLSCREEN))
+			SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI | (Settings::getInstance()->getBool("Windowed") ? 0 : (Settings::getInstance()->getBool("FullscreenBorderless") ? SDL_WINDOW_BORDERLESS : SDL_WINDOW_FULLSCREEN))
 		);
 				
 		if (sdlWindow == NULL)
