@@ -232,8 +232,6 @@ const std::string GridGameListView::getImagePath(FileData* file)
 	return file->getThumbnailPath();
 }
 
-#include "SystemData.h"
-
 void GridGameListView::populateList(const std::vector<FileData*>& files)
 {
 	mGrid.clear();
@@ -555,7 +553,7 @@ void GridGameListView::updateInfoPanel()
 		mDescription.setText(file->getMetadata().get("desc"));
 		mDescContainer.reset();
 
-        mSystemName.setValue(file->getSystem()->getFullName());
+        mSystemName.setValue(mRoot->getSystem()->getFullName());
 		mRating.setValue(file->getMetadata().get("rating"));
 		mReleaseDate.setValue(file->getMetadata().get("releasedate"));
 		mDeveloper.setValue(file->getMetadata().get("developer"));

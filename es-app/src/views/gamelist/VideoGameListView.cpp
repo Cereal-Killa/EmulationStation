@@ -289,9 +289,6 @@ void VideoGameListView::initMDValues()
 	mDescContainer.setSize(mDescContainer.getSize().x(), mSize.y() - mDescContainer.getPosition().y());
 }
 
-#include "SystemData.h"
-
-
 void VideoGameListView::updateInfoPanel()
 {
 	FileData* file = (mList.size() == 0 || mList.isScrolling()) ? NULL : mList.getSelected();
@@ -341,7 +338,7 @@ void VideoGameListView::updateInfoPanel()
 		mDescription.setText(file->getMetadata().get("desc"));
 		mDescContainer.reset();
 
-        mSystemName.setValue(file->getSystem()->getFullName());
+        mSystemName.setValue(mRoot->getSystem()->getFullName());
 		mRating.setValue(file->getMetadata().get("rating"));
 		mReleaseDate.setValue(file->getMetadata().get("releasedate"));
 		mDeveloper.setValue(file->getMetadata().get("developer"));

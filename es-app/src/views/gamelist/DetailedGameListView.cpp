@@ -339,7 +339,6 @@ std::string DetailedGameListView::getMetadata(FileData* file, std::string name)
 }
 
 #include "platform.h"
-#include "SystemData.h"
 
 void DetailedGameListView::updateInfoPanel()
 {
@@ -387,7 +386,7 @@ void DetailedGameListView::updateInfoPanel()
 		mDescription.setText(getMetadata(file, "desc"));
 		mDescContainer.reset();
 
-        mSystemName.setValue(file->getSystem()->getFullName());
+        mSystemName.setValue(mRoot->getSystem()->getFullName());
 		mRating.setValue(getMetadata(file, "rating"));
 		mReleaseDate.setValue(getMetadata(file, "releasedate"));
 		mDeveloper.setValue(getMetadata(file, "developer"));
