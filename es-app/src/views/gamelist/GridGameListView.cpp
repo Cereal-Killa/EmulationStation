@@ -19,10 +19,10 @@ GridGameListView::GridGameListView(Window* window, FolderData* root, const std::
 	mGrid(window),
 	mDescContainer(window), mDescription(window),
 	mImage(nullptr), mVideo(nullptr), mMarquee(nullptr), mThumbnail(nullptr),
-	mLblRating(window), mLblReleaseDate(window), mLblDeveloper(window), mLblPublisher(window),
+	mLblSystemName(window), mLblRating(window), mLblReleaseDate(window), mLblDeveloper(window), mLblPublisher(window),
 	mLblGenre(window), mLblPlayers(window), mLblLastPlayed(window), mLblPlayCount(window),
 
-	mRating(window), mReleaseDate(window), mDeveloper(window), mPublisher(window),
+	mSystemName(window), mRating(window), mReleaseDate(window), mDeveloper(window), mPublisher(window),
 	mGenre(window), mPlayers(window), mLastPlayed(window), mPlayCount(window),
 	mName(window)
 {
@@ -37,6 +37,8 @@ GridGameListView::GridGameListView(Window* window, FolderData* root, const std::
 	addChild(&mGrid);
 
 	// metadata labels + values
+    addChild(&mLblSystemName);
+    addChild(&mSystemName);
 	mLblRating.setText("Rating: ");
 	addChild(&mLblRating);
 	addChild(&mRating);
@@ -291,6 +293,7 @@ void GridGameListView::onThemeChanged(const std::shared_ptr<ThemeData>& theme)
 
 	using namespace ThemeFlags;
 
+    mSystemName.applyTheme(theme, getName(), "md_systemname", ALL);
 	mGrid.applyTheme(theme, getName(), "gamegrid", ALL);
 	mName.applyTheme(theme, getName(), "md_name", ALL);
 
@@ -550,6 +553,7 @@ void GridGameListView::updateInfoPanel()
 		mDescription.setText(file->getMetadata().get("desc"));
 		mDescContainer.reset();
 
+        mSystemName.setValue(file->getSystem()->getFullName());
 		mRating.setValue(file->getMetadata().get("rating"));
 		mReleaseDate.setValue(file->getMetadata().get("releasedate"));
 		mDeveloper.setValue(file->getMetadata().get("developer"));
@@ -680,6 +684,7 @@ void GridGameListView::onFileChanged(FileData* file, FileChangeType change)
 std::vector<TextComponent*> GridGameListView::getMDLabels()
 {
 	std::vector<TextComponent*> ret;
+	ret.push_back(&mLblSystemName);
 	ret.push_back(&mLblRating);
 	ret.push_back(&mLblReleaseDate);
 	ret.push_back(&mLblDeveloper);

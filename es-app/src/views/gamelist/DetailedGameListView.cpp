@@ -17,10 +17,10 @@ DetailedGameListView::DetailedGameListView(Window* window, FolderData* root) :
 	mDescContainer(window), mDescription(window), 
 	mImage(nullptr), mMarquee(nullptr), mVideo(nullptr), mThumbnail(nullptr),
 
-	mLblRating(window), mLblReleaseDate(window), mLblDeveloper(window), mLblPublisher(window), 
+	mLblSystemName(window), mLblRating(window), mLblReleaseDate(window), mLblDeveloper(window), mLblPublisher(window), 
 	mLblGenre(window), mLblPlayers(window), mLblLastPlayed(window), mLblPlayCount(window),
 
-	mRating(window), mReleaseDate(window), mDeveloper(window), mPublisher(window), 
+	mSystemName(window), mRating(window), mReleaseDate(window), mDeveloper(window), mPublisher(window), 
 	mGenre(window), mPlayers(window), mLastPlayed(window), mPlayCount(window),
 	mName(window)
 {
@@ -34,6 +34,8 @@ DetailedGameListView::DetailedGameListView(Window* window, FolderData* root) :
 	createImage();
 
 	// metadata labels + values
+    addChild(&mLblSystemName);
+    addChild(&mSystemName);
 	mLblRating.setText(_("Rating") + ": ");
 	addChild(&mLblRating);
 	addChild(&mRating);
@@ -176,6 +178,7 @@ void DetailedGameListView::onThemeChanged(const std::shared_ptr<ThemeData>& them
 
 	using namespace ThemeFlags;
 	
+    mSystemName.applyTheme(theme, getName(), "md_systemname", ALL);
 	mName.applyTheme(theme, getName(), "md_name", ALL);
 
 	if (theme->getElement(getName(), "md_video", "video"))
@@ -383,6 +386,7 @@ void DetailedGameListView::updateInfoPanel()
 		mDescription.setText(getMetadata(file, "desc"));
 		mDescContainer.reset();
 
+        mSystemName.setValue(file->getSystem()->getFullName());
 		mRating.setValue(getMetadata(file, "rating"));
 		mReleaseDate.setValue(getMetadata(file, "releasedate"));
 		mDeveloper.setValue(getMetadata(file, "developer"));
@@ -470,6 +474,7 @@ void DetailedGameListView::launch(FileData* game)
 std::vector<TextComponent*> DetailedGameListView::getMDLabels()
 {
 	std::vector<TextComponent*> ret;
+	ret.push_back(&mLblSystemName);
 	ret.push_back(&mLblRating);
 	ret.push_back(&mLblReleaseDate);
 	ret.push_back(&mLblDeveloper);
