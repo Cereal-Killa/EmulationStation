@@ -289,6 +289,7 @@ void VideoGameListView::initMDValues()
 	mDescContainer.setSize(mDescContainer.getSize().x(), mSize.y() - mDescContainer.getPosition().y());
 }
 
+#include "SystemData.h"
 
 
 void VideoGameListView::updateInfoPanel()

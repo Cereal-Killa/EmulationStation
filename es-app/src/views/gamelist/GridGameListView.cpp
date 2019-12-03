@@ -232,6 +232,8 @@ const std::string GridGameListView::getImagePath(FileData* file)
 	return file->getThumbnailPath();
 }
 
+#include "SystemData.h"
+
 void GridGameListView::populateList(const std::vector<FileData*>& files)
 {
 	mGrid.clear();

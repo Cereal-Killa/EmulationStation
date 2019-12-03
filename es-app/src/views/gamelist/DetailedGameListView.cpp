@@ -339,6 +339,7 @@ std::string DetailedGameListView::getMetadata(FileData* file, std::string name)
 }
 
 #include "platform.h"
+#include "SystemData.h"
 
 void DetailedGameListView::updateInfoPanel()
 {
