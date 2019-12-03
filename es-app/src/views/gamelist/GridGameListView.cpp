@@ -501,6 +501,8 @@ void GridGameListView::initMDValues()
 	mDescContainer.setSize(mDescContainer.getSize().x(), mSize.y() - mDescContainer.getPosition().y());
 }
 
+#include "SystemData.h"
+
 void GridGameListView::updateInfoPanel()
 {
 	FileData* file = (mGrid.size() == 0 || mGrid.isScrolling()) ? NULL : mGrid.getSelected();
